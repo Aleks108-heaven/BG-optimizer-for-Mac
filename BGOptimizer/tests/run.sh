@@ -1,6 +1,6 @@
 #!/bin/bash
 # Runs every automated check. Needs only the Xcode command-line tools. Takes about a minute.
-# It starts harmless sleeper processes and uses your real Finder only to confirm it is refused. It never touches your real log.
+# It starts harmless sleeper processes and uses a system process of the current user (Finder, Dock) only to confirm it is refused. It never touches the real log.
 set -uo pipefail
 cd "$(dirname "$0")/.."
 W="$(mktemp -d)"; trap 'pkill -f "$W/" 2>/dev/null; rm -rf "$W"' EXIT

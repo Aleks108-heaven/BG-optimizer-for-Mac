@@ -2,7 +2,7 @@ import Foundation
 
 /// Append-only text log in ~/Library/Logs/BGOptimizer, rolled over at 1 MB. Survives crashes.
 final class ActionLog {
-    /// ~/Library/Logs/BGOptimizer. Tests can point it elsewhere with BGOPT_LOG_DIR so they never touch your real log.
+    /// ~/Library/Logs/BGOptimizer. Tests can point it elsewhere with BGOPT_LOG_DIR so they never touch the real log.
     static let dir = ProcessInfo.processInfo.environment["BGOPT_LOG_DIR"].map { URL(fileURLWithPath: $0) }
         ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/BGOptimizer")
     static var fileURL: URL { dir.appendingPathComponent("actions.log") }
