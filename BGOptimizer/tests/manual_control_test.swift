@@ -14,6 +14,10 @@ let a = CommandLine.arguments
 let sleeper = Int32(a[1])!, chrome = Int32(a[2])!, finder = Int32(a[3]) ?? 0   // 0 = no system process available to test against (e.g. a CI machine)
 let startOf = { (p: Int32) in ProcTable.sample(p, wantCPU: false)!.start }
 let finderBefore = finder == 0 ? "" : pri(finder)
+// "Normal" priority is not the same number on every Mac or macOS (31 on one, different on a CI machine), so remember each
+// process's own starting value and compare with that.
+let normalSleeper = pri(sleeper), normalChrome = pri(chrome)
+print("starting priorities: sleeper \(normalSleeper), browser-like \(normalChrome); background mode is expected to read 4")
 var cfg = Config(); cfg.interval = 1; cfg.sustain = 3; cfg.threshold = 90
 let engine = Engine(cfg, ActionLog(echo: false))
 var rows: [Int32: ActivityRow] = [:]
@@ -38,22 +42,22 @@ at(4.5) { check(pri(sleeper) == "4", "priority 31 -> 4 (read with ps)"); check(r
 at(4.6) { if finder != 0 { print("[B] try to slow a system process, even with confirmation"); engine.slowManually(pid: finder, start: startOf(finder), confirmedInteractive: true) } }
 at(5.2) { if finder != 0 { check(pri(finder) == finderBefore, "system process priority unchanged"); check(lastNotice()?.1 == true, "refusal banner") } }
 at(5.3) { print("[C] wrong identity (start time + 1)"); engine.slowManually(pid: chrome, start: startOf(chrome) + 1, confirmedInteractive: true) }
-at(5.9) { check(pri(chrome) == "31", "browser-like job untouched"); check(lastNotice()?.1 == true, "refusal banner") }
+at(5.9) { check(pri(chrome) == normalChrome, "browser-like job untouched"); check(lastNotice()?.1 == true, "refusal banner") }
 at(6.0) { print("[D] browser-like job without confirmation"); engine.slowManually(pid: chrome, start: startOf(chrome), confirmedInteractive: false) }
-at(6.6) { check(pri(chrome) == "31", "still untouched"); check(lastNotice()?.1 == true, "refusal banner") }
+at(6.6) { check(pri(chrome) == normalChrome, "still untouched"); check(lastNotice()?.1 == true, "refusal banner") }
 at(6.7) { print("[E] browser-like job with confirmation"); engine.slowManually(pid: chrome, start: startOf(chrome), confirmedInteractive: true) }
 at(7.7) { check(pri(chrome) == "4", "slowed after confirmation") }
 at(12)  { print("[F] 8 s later (an automatic slow-down would have been released after 3 s of quiet)")
           check(pri(sleeper) == "4" && pri(chrome) == "4", "manual slow-downs are still in place") }
 at(12.2){ print("[G] restore"); engine.release(sleeper) }
-at(13.5){ check(pri(sleeper) == "31", "restored to 31") }
+at(13.5){ check(pri(sleeper) == normalSleeper, "restored to its normal priority") }
 at(13.6){ print("[H] slow again, then put the app on the protected list"); engine.slowManually(pid: sleeper, start: startOf(sleeper), confirmedInteractive: false) }
 at(14.8){ check(pri(sleeper) == "4", "slowed again"); engine.update(cfg, protectedApps: ["bgsleeper"]) }
-at(16.2){ check(pri(sleeper) == "31" && pri(chrome) == "31", "protecting released every process of that app")
+at(16.2){ check(pri(sleeper) == normalSleeper && pri(chrome) == normalChrome, "protecting released every process of that app")
           check(rows[sleeper]?.userEntry == "bgsleeper" && isLocked(rows[sleeper]), "row says it is on your list and is locked") }
 at(16.3){ print("[I] try to slow a protected app"); engine.slowManually(pid: sleeper, start: startOf(sleeper), confirmedInteractive: true) }
-at(17.2){ check(pri(sleeper) == "31", "refused"); check(lastNotice()?.1 == true, "refusal banner") }
+at(17.2){ check(pri(sleeper) == normalSleeper, "refused"); check(lastNotice()?.1 == true, "refusal banner") }
 at(17.5){ engine.shutdownSync()
-          check(pri(sleeper) == "31" && pri(chrome) == "31", "everything is back to normal after quitting")
+          check(pri(sleeper) == normalSleeper && pri(chrome) == normalChrome, "everything is back to normal after quitting")
           print(failures == 0 ? "MANUAL CONTROL: ALL PASSED" : "MANUAL CONTROL: \(failures) FAILED"); exit(failures == 0 ? 0 : 1) }
 RunLoop.main.run()

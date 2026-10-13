@@ -14,10 +14,12 @@ ditto --noextattr "$APP" "$W/T.app"
 codesign --force --sign - "$W/T.app" 2>/dev/null
 HEX=$(python3 -c "print(b'{\"threshold\":50,\"sustainSeconds\":60,\"protectedApps\":[],\"observeOnly\":true,\"language\":\"en\"}'.hex())")
 defaults write "$ID" settings -data "$HEX"; defaults write "$ID" enabled -bool true; defaults write "$ID" didOnboard -bool true
+attempt() {
+rm -rf "$W/log"
 BGOPT_LOG_DIR="$W/log" "$W/T.app/Contents/MacOS/BGOptimizer" --selftest-window >"$W/out.txt" 2>&1 &
 PID=$!
 for _ in $(seq 1 40); do kill -0 "$PID" 2>/dev/null || break; sleep 1; done
-if kill -0 "$PID" 2>/dev/null; then echo "FAIL: the app did not finish the test in 40 s"; exit 1; fi
+if kill -0 "$PID" 2>/dev/null; then echo "FAIL: the app did not finish the test in 40 s"; return 1; fi
 LOG="$W/log/actions.log"; FAIL=0
 expect() { if grep -E "SELFTEST $1" "$LOG" | grep -qE "$2"; then echo "  pass $3"; else echo "  FAIL $3"; grep "SELFTEST $1" "$LOG" | cut -c1-200; FAIL=1; fi; }
 expect "start" "accessory" "starts as a menu-bar-only app"
@@ -26,4 +28,13 @@ expect "window minimized" "regular.*minimized=true.*refreshTimer=false, engineBu
 expect "window restored" "regular.*minimized=false.*refreshTimer=true, engineBuildsRows=true" "restored: work resumes"
 expect "window closed" "accessory.*refreshTimer=false, engineBuildsRows=false" "closed: back to menu-bar-only"
 grep -E "SELFTEST Startup tab loaded" "$LOG" | grep -oE "startupItems=[0-9]+" | sed 's/^/  info /'
-[ $FAIL -eq 0 ] && echo "START-UP TEST: ALL PASSED" || { echo "START-UP TEST: FAILED"; exit 1; }
+[ $FAIL -eq 0 ]
+
+}
+# The app deliberately stops work while its window is covered by other windows or on another desktop space. On a Mac that is
+# being used, the test window can be hidden for a moment, so a failure gets one more try, and says so.
+if attempt; then echo "START-UP TEST: ALL PASSED"
+else
+  echo "  (first attempt failed; trying once more: on a desktop in use the window may have been covered for a moment)"
+  if attempt; then echo "START-UP TEST: PASSED ON THE SECOND ATTEMPT"; else echo "START-UP TEST: FAILED"; exit 1; fi
+fi
