@@ -35,6 +35,8 @@ jobs:
         run: ./build.sh --dmg
 
       - name: Automated checks and start-up test of the finished app
+        # tests/run.sh also limits every section itself and copies each result into an annotation on the run page
+        timeout-minutes: 25
         run: ./tests/run.sh
 
       - name: Checksums

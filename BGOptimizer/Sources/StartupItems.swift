@@ -154,17 +154,9 @@ enum StartupReader {
         return out
     }
 
+    /// `sfltool` can be slow, or wait forever where there is no desktop session, so it gets longer than the others but not unlimited.
     private static func run(_ tool: String, _ args: [String]) -> String {
-        let p = Process()
-        p.executableURL = URL(fileURLWithPath: tool)           // full path, fixed arguments, no shell
-        p.arguments = args
-        let out = Pipe()
-        p.standardOutput = out
-        p.standardError = FileHandle.nullDevice
-        guard (try? p.run()) != nil else { return "" }
-        let data = out.fileHandleForReading.readDataToEndOfFile()
-        p.waitUntilExit()
-        return String(data: data, encoding: .utf8) ?? ""
+        ToolRunner.run(tool, args, timeout: tool == "/usr/bin/sfltool" ? 20 : 8).output
     }
 
     static func isSecurityTool(_ text: String) -> Bool { Policy.isSecurityTool(text) }
@@ -252,31 +244,17 @@ enum StartupControlAction {
         }
         // 4. launchd does the work. "disable" only prevents the next start; it does not stop or delete anything.
         let target = "gui/\(uid)/\(label)"
-        let p = Process()
-        p.executableURL = URL(fileURLWithPath: "/bin/launchctl")
-        p.arguments = [enable ? "enable" : "disable", target]
-        p.standardOutput = FileHandle.nullDevice
-        p.standardError = FileHandle.nullDevice
-        guard (try? p.run()) != nil else { throw StartupError.failed(trkey("macOS did not accept the change.")) }
-        p.waitUntilExit()
+        let result = ToolRunner.run("/bin/launchctl", [enable ? "enable" : "disable", target], timeout: 8)
+        guard !result.timedOut else { throw StartupError.failed(trkey("macOS did not accept the change.")) }
         // 5. read it back
         let state = StartupParsers.parsePrintDisabled(StartupReaderShell.run("/bin/launchctl", ["print-disabled", "gui/\(uid)"]))[label]
-        guard p.terminationStatus == 0, state == !enable else { throw StartupError.failed(trkey("macOS did not accept the change.")) }
+        guard result.status == 0, state == !enable else { throw StartupError.failed(trkey("macOS did not accept the change.")) }
     }
 }
 
 /// Small shared helper (kept separate so the reader's private runner stays private).
 enum StartupReaderShell {
     static func run(_ tool: String, _ args: [String]) -> String {
-        let p = Process()
-        p.executableURL = URL(fileURLWithPath: tool)
-        p.arguments = args
-        let out = Pipe()
-        p.standardOutput = out
-        p.standardError = FileHandle.nullDevice
-        guard (try? p.run()) != nil else { return "" }
-        let data = out.fileHandleForReading.readDataToEndOfFile()
-        p.waitUntilExit()
-        return String(data: data, encoding: .utf8) ?? ""
+        ToolRunner.run(tool, args, timeout: 8).output
     }
 }

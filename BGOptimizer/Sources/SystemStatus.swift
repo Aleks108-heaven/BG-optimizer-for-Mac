@@ -127,15 +127,7 @@ final class SystemReader {
     private func refreshHealth() {
         guard Date().timeIntervalSince(healthAt) > 120 else { return }
         healthAt = Date()
-        let p = Process()
-        p.executableURL = URL(fileURLWithPath: "/usr/sbin/system_profiler")
-        p.arguments = ["SPPowerDataType", "-json"]
-        let pipe = Pipe()
-        p.standardOutput = pipe
-        p.standardError = FileHandle.nullDevice
-        guard (try? p.run()) != nil else { return }
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        p.waitUntilExit()
+        let data = Data(ToolRunner.run("/usr/sbin/system_profiler", ["SPPowerDataType", "-json"], timeout: 10).output.utf8)
         guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let items = root["SPPowerDataType"] as? [[String: Any]] else { return }
         for item in items {

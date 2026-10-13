@@ -103,6 +103,14 @@ let link = tmp + "/LaunchAgents/link.plist"
 try? FileManager.default.createSymbolicLink(atPath: link, withDestinationPath: "/Library/LaunchAgents/com.microsoft.update.agent.plist")
 check(refused("com.microsoft.update.agent", link), "refused: a symbolic link pointing out of your folder")
 
+// ---- a program that hangs must not hang the app
+let t0 = Date()
+let hung = ToolRunner.run("/bin/sleep", ["30"], timeout: 2)
+check(hung.timedOut && Date().timeIntervalSince(t0) < 6, "a hanging program is stopped after its time limit (took \(Int(Date().timeIntervalSince(t0))) s, not 30)")
+let quick = ToolRunner.run("/bin/echo", ["hello"], timeout: 5)
+check(!quick.timedOut && quick.status == 0 && quick.output.contains("hello"), "a normal program returns its output")
+check(ToolRunner.run("/nonexistent/tool", [], timeout: 2).status == -1, "a missing program returns quietly")
+
 // ---- reading this Mac for real
 let items = StartupReader.read()
 print("  (this Mac: \(items.count) startup items; \(items.filter { if case .toggle = $0.control { return true }; return false }.count) can be switched here)")

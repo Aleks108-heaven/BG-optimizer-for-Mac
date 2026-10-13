@@ -160,7 +160,9 @@ Checks the translations, the log (private permissions, one line per entry, clear
 (parsing, the rules for changing, a real read), the rules for changing jobs by hand (with harmless sleeper processes;
 a system process of the current user is used only to confirm it is refused), and a start-up test of the finished app
 (windows, Dock icon, minimize and restore). About a minute. On a machine without a Finder, a per-user launchd domain or
-a window server, the parts that need them are skipped with a message.
+a window server, the parts that need them are skipped with a message. Every section has a time limit, and on GitHub
+Actions each section's result is also copied into an annotation on the run page. Outside programs the app runs
+(`launchctl`, `sfltool`, `system_profiler`) are stopped after a time limit instead of being waited for forever.
 
 ## Development
 
