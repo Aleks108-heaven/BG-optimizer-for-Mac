@@ -1,0 +1,74 @@
+# Builds BG Optimizer on a GitHub-hosted Apple Silicon Mac, runs every automated check and a start-up test of the
+# finished app, and keeps the installer (.dmg) with a checksum file. Push a tag like v1.0.0 to also publish a Release.
+name: Build macOS app
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build, test and package (Apple Silicon)
+    # arm64 runner. It runs a different macOS than the Mac the app was written on, which is itself a useful test.
+    runs-on: macos-14
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: BGOptimizer
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Machine and toolchain
+        run: |
+          sw_vers
+          uname -m
+          swift --version
+          xcode-select -p
+
+      - name: Build the app and the installer
+        run: ./build.sh --dmg
+
+      - name: Automated checks and start-up test of the finished app
+        run: ./tests/run.sh
+
+      - name: Checksums
+        run: |
+          cd dist
+          shasum -a 256 BG-Optimizer-*-arm64.dmg > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Keep the installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: bg-optimizer-macos-arm64
+          path: |
+            BGOptimizer/dist/*.dmg
+            BGOptimizer/dist/SHA256SUMS.txt
+          if-no-files-found: error
+
+  release:
+    name: Publish a GitHub Release (version tags only)
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: bg-optimizer-macos-arm64
+          path: dist
+      - name: Create the release with the installer attached
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "BG Optimizer ${GITHUB_REF_NAME#v}" \
+            --generate-notes

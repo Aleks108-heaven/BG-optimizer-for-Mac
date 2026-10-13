@@ -4,7 +4,7 @@
 #   ./build.sh            -> build/BG Optimizer.app
 #   ./build.sh --install  -> also ~/Applications/BG Optimizer.app (use this one: "Launch at login"
 #                            remembers the app's location, so it must live somewhere stable)
-#   ./build.sh --dmg      -> also dist/BG-Optimizer-<version>.dmg (drag-to-Applications installer)
+#   ./build.sh --dmg      -> also dist/BG-Optimizer-<version>-arm64.dmg (drag-to-Applications installer)
 set -euo pipefail
 cd "$(dirname "$0")"
 python3 tools/check_strings.py          # stop here if a translation is missing or broken
@@ -32,7 +32,7 @@ for arg in "$@"; do
     --install) copy_to "$HOME/Applications" ;;
     --dmg)
         VERSION="$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' Info.plist)"
-        OUT="dist/BG-Optimizer-$VERSION.dmg"
+        OUT="dist/BG-Optimizer-$VERSION-$(uname -m).dmg"
         DMG="$STAGE/dmg"
         mkdir -p "$DMG" dist
         ditto --noextattr --noqtn "$APP" "$DMG/BG Optimizer.app"

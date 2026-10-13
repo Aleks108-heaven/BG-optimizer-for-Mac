@@ -84,11 +84,13 @@ func state(_ label: String) -> Bool? { StartupParsers.parsePrintDisabled(Startup
 func refused(_ label: String, _ file: String, dir: String = agents) -> Bool {
     do { try StartupControlAction.setEnabled(label: label, plistPath: file, enable: false, agentsDir: dir); return false } catch { return true }
 }
-check(state(testLabel) == nil, "before: no override recorded for the test label")
-do { try StartupControlAction.setEnabled(label: testLabel, plistPath: agents + "/a.plist", enable: false, agentsDir: agents); check(state(testLabel) == true, "switch OFF: launchd now lists it as disabled (read back)") }
+let hasGUIDomain = !StartupReaderShell.run("/bin/launchctl", ["print-disabled", "gui/\(getuid())"]).isEmpty
+if !hasGUIDomain { print("  skipped: this machine has no per-user launchd domain, so switching cannot be tested here") }
+check(!hasGUIDomain || state(testLabel) == nil, "before: no override recorded for the test label")
+if hasGUIDomain { do { try StartupControlAction.setEnabled(label: testLabel, plistPath: agents + "/a.plist", enable: false, agentsDir: agents); check(state(testLabel) == true, "switch OFF: launchd now lists it as disabled (read back)") }
 catch { check(false, "switch OFF should work, got \(error)") }
 do { try StartupControlAction.setEnabled(label: testLabel, plistPath: agents + "/a.plist", enable: true, agentsDir: agents); check(state(testLabel) == false, "switch ON: launchd lists it as enabled again (read back)") }
-catch { check(false, "switch ON should work, got \(error)") }
+catch { check(false, "switch ON should work, got \(error)") } }
 check(refused("com.apple.fake", agents + "/d.plist"), "refused: a macOS (com.apple.) item")
 check(state("com.apple.fake") == nil, "  ... and nothing was recorded for it")
 check(refused("com.eset.fake", agents + "/e.plist"), "refused: a security tool")
@@ -104,7 +106,8 @@ check(refused("com.microsoft.update.agent", link), "refused: a symbolic link poi
 // ---- reading this Mac for real
 let items = StartupReader.read()
 print("  (this Mac: \(items.count) startup items; \(items.filter { if case .toggle = $0.control { return true }; return false }.count) can be switched here)")
-check(!items.isEmpty, "real read: finds startup items")
+let onCI = ProcessInfo.processInfo.environment["CI"] != nil
+check(!items.isEmpty || onCI, "real read: finds startup items (a CI machine may have none)")
 check(!items.contains { $0.label.hasPrefix("com.apple.") }, "real read: no macOS items listed")
 check(items.allSatisfy { i in if case .toggle = i.control { return i.kind == .userAgent } else { return true } }, "real read: only your own agents can be toggled")
 check(items.allSatisfy { i in if case .toggle = i.control { return !StartupReader.isSecurityTool(i.label + i.name) } else { return true } }, "real read: no security tool is toggleable")

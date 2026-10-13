@@ -11,7 +11,7 @@ or when you quit.
 
 ## Install
 
-**From the installer:** open `BGOptimizer/dist/BG-Optimizer-1.0.dmg` and drag *BG Optimizer* onto
+**From the installer:** open `BGOptimizer/dist/BG-Optimizer-1.0-arm64.dmg` and drag *BG Optimizer* onto
 *Applications*. The app is self-signed, not notarized (that needs a paid Apple Developer account), so on
 another Mac, or after a download, macOS may refuse the first launch: right-click the app and choose Open.
 
@@ -19,21 +19,36 @@ another Mac, or after a download, macOS may refuse the first launch: right-click
 
     cd BGOptimizer
     ./build.sh --install        # build + copy to ~/Applications/BG Optimizer.app
-    ./build.sh --dmg            # build + dist/BG-Optimizer-1.0.dmg
+    ./build.sh --dmg            # build + dist/BG-Optimizer-1.0-arm64.dmg
 
 ## Install on another Mac, or share it
 
 **Requirements:** an Apple Silicon Mac (M1 or newer; the app is arm64 only, there is no Intel build) and macOS 13 or
 newer. It was built for 13+, but it has only been run on macOS 27 on an M1 (the machine it was written on).
 
-**Option 1: the installer.** Download `BG-Optimizer-1.0.dmg` from the repository's Releases page, check its SHA-256
-against the one in the release notes (`shasum -a 256 BG-Optimizer-1.0.dmg`), open it and drag *BG Optimizer* onto
-*Applications*. The app is self-signed, not notarized, so macOS will block the first launch of a downloaded copy.
-Allow it once: try to open it, then System Settings > Privacy & Security, scroll to the message about
-"BG Optimizer" and choose **Open Anyway** (it asks for your password). Or, in Terminal:
-`xattr -dr com.apple.quarantine "/Applications/BG Optimizer.app"`. (On recent macOS versions the Control-click >
-Open shortcut no longer works for apps like this.) I checked that macOS's policy check rejects this build; I
-could not test the first launch on a second Mac.
+**Option 1: download the installer (built by GitHub).** The workflow in `.github/workflows/build-macos.yml` builds the
+app on a GitHub-hosted Apple Silicon Mac (macOS 14), runs the whole automated test suite and a start-up test of the
+finished app, and keeps the installer. In the repository on GitHub, either open **Releases** and take the latest
+`BG-Optimizer-1.0-arm64.dmg` plus `SHA256SUMS.txt` (a release is created when a tag such as `v1.0.0` is pushed), or
+open the **Actions** tab, pick the latest successful run and download the `bg-optimizer-macos-arm64` artifact (it holds
+the same two files). Check the download against the checksum file, from the folder that holds both:
+
+    shasum -a 256 -c SHA256SUMS.txt
+
+Open the `.dmg` and drag *BG Optimizer* onto *Applications*.
+
+*Opening it the first time.* The app is signed ad hoc (the minimum Apple Silicon needs to run it) but it is not
+notarized by Apple, which needs a paid developer account. So macOS says it "could not verify BG Optimizer is free of
+malware" and will not open it. That is Gatekeeper reacting to the download flag. Remove the flag once, in Terminal,
+then open the app as usual:
+
+    xattr -dr com.apple.quarantine "/Applications/BG Optimizer.app"
+    open "/Applications/BG Optimizer.app"
+
+Or, without Terminal: try to open it, then go to System Settings > Privacy & Security, scroll down and press
+**Open Anyway** (it asks for your password). On recent macOS versions Control-click > Open no longer gets past this.
+Do the same again after installing a newer version. I checked that macOS's policy check rejects this build; I could
+not test the first launch on a second Mac.
 
 **Option 2: build it on the new Mac (best for your own Macs).** An app you build yourself is not quarantined, so there
 is no warning:
@@ -200,6 +215,10 @@ the row you clicked (outside the window). It is now a native popup opened at the
 menu were tested for every kind of row (normal, browser-like, slowed, system, on your list) in both
 languages. After you rebooted, the app log showed the login item starting the app (4:43:13 PM, 17 seconds
 after login) and the app releasing everything on shutdown (4:41:38 PM).
+
+The GitHub workflow has been checked as valid YAML and its steps were run by hand on the Mac the app was written
+on (build, all checks, start-up test, checksum). It has not run on GitHub yet; the first run will also be the first
+test on a different macOS (macOS 14). If a step fails there, the log will say which.
 
 Not tested by hand yet: where the new popup appears, the confirmation dialog and the banner in the real
 window, column sorting, and Hide idle processes (the code paths and the engine rules behind them are tested).

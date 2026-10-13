@@ -31,8 +31,13 @@ swiftc -O tests/sleeper.swift -o "$W/bgsleeper" 2>&1 | grep error
 mkdir -p "$W/fake/Google Chrome.app/Contents/MacOS"; cp "$W/bgsleeper" "$W/fake/Google Chrome.app/Contents/MacOS/bgsleeper"
 codesign --force --sign - "$W/bgsleeper" "$W/fake/Google Chrome.app/Contents/MacOS/bgsleeper" 2>/dev/null
 ( "$W/bgsleeper" >/dev/null 2>&1 & ); ( "$W/fake/Google Chrome.app/Contents/MacOS/bgsleeper" >/dev/null 2>&1 & ); sleep 1   # detached: not "in front"
-SL=$(pgrep -f "$W/bgsleeper" | head -1); CH=$(pgrep -f "Google Chrome.app/Contents/MacOS/bgsleeper" | head -1); FI=$(pgrep -x Finder | head -1)
-if [ -z "$SL" ] || [ -z "$CH" ] || [ -z "$FI" ]; then echo "  could not start the test processes (sleeper=$SL fake-browser=$CH Finder=$FI)"; FAIL=1
+SL=$(pgrep -f "$W/bgsleeper" | head -1); CH=$(pgrep -f "Google Chrome.app/Contents/MacOS/bgsleeper" | head -1)
+FI=0; for name in Finder Dock SystemUIServer; do p=$(pgrep -x -u "$(id -u)" "$name" | head -1); if [ -n "$p" ]; then FI=$p; break; fi; done   # a system process of yours, to confirm it is refused
+if [ -z "$SL" ] || [ -z "$CH" ]; then echo "  could not start the test processes (sleeper=$SL fake-browser=$CH)"; FAIL=1
 else build manual tests/manual_control_test.swift "${CORE[@]}" && BGOPT_LOG_DIR="$W/logdir2" "$W/manual.app/Contents/MacOS/t" "$SL" "$CH" "$FI" || FAIL=1; fi
+
+if [ -d "build/BG Optimizer.app" ]; then
+  step "finished app: start-up test (windows, Dock icon, minimize)"; ./tests/startup_selftest.sh "build/BG Optimizer.app" || FAIL=1
+fi
 
 echo; [ $FAIL -eq 0 ] && echo "ALL CHECKS PASSED" || { echo "SOME CHECKS FAILED"; exit 1; }

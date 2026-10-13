@@ -11,9 +11,9 @@ var failures = 0
 func check(_ ok: Bool, _ what: String) { print(ok ? "  pass" : "  FAIL", what); if !ok { failures += 1 } }
 
 let a = CommandLine.arguments
-let sleeper = Int32(a[1])!, chrome = Int32(a[2])!, finder = Int32(a[3])!
+let sleeper = Int32(a[1])!, chrome = Int32(a[2])!, finder = Int32(a[3]) ?? 0   // 0 = no system process available to test against (e.g. a CI machine)
 let startOf = { (p: Int32) in ProcTable.sample(p, wantCPU: false)!.start }
-let finderBefore = pri(finder)
+let finderBefore = finder == 0 ? "" : pri(finder)
 var cfg = Config(); cfg.interval = 1; cfg.sustain = 3; cfg.threshold = 90
 let engine = Engine(cfg, ActionLog(echo: false))
 var rows: [Int32: ActivityRow] = [:]
@@ -31,12 +31,12 @@ func isLocked(_ r: ActivityRow?) -> Bool { if case .locked? = r.map({ $0.access 
 at(3)   { print("rows offered before any action")
           check(isOK(rows[sleeper]), "normal job may be slowed directly")
           check(isConfirm(rows[chrome]), "browser-like job needs a confirmation")
-          check(isLocked(rows[finder]) && rows[finder]?.canProtect == false, "Finder is locked and cannot even be added to the list") }
+          if finder != 0 { check(isLocked(rows[finder]) && rows[finder]?.canProtect == false, "a system process is locked and cannot even be added to the list") } else { print("  skipped: no system process to test against") } }
 at(3.2) { print("[A] slow a normal job"); engine.slowManually(pid: sleeper, start: startOf(sleeper), confirmedInteractive: false) }
 at(4.5) { check(pri(sleeper) == "4", "priority 31 -> 4 (read with ps)"); check(rows[sleeper]?.canRestore == true, "table now offers Restore")
           check(lastNotice()?.1 == false, "success banner") }
-at(4.6) { print("[B] try to slow Finder, even with confirmation"); engine.slowManually(pid: finder, start: startOf(finder), confirmedInteractive: true) }
-at(5.2) { check(pri(finder) == finderBefore, "Finder priority unchanged"); check(lastNotice()?.1 == true, "refusal banner") }
+at(4.6) { if finder != 0 { print("[B] try to slow a system process, even with confirmation"); engine.slowManually(pid: finder, start: startOf(finder), confirmedInteractive: true) } }
+at(5.2) { if finder != 0 { check(pri(finder) == finderBefore, "system process priority unchanged"); check(lastNotice()?.1 == true, "refusal banner") } }
 at(5.3) { print("[C] wrong identity (start time + 1)"); engine.slowManually(pid: chrome, start: startOf(chrome) + 1, confirmedInteractive: true) }
 at(5.9) { check(pri(chrome) == "31", "browser-like job untouched"); check(lastNotice()?.1 == true, "refusal banner") }
 at(6.0) { print("[D] browser-like job without confirmation"); engine.slowManually(pid: chrome, start: startOf(chrome), confirmedInteractive: false) }
