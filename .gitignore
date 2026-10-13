@@ -1,0 +1,13 @@
+# macOS / Python noise
+.DS_Store
+__pycache__/
+*.pyc
+
+# build output: the installer is attached to a GitHub Release instead of being committed
+BGOptimizer/build/
+BGOptimizer/dist/
+
+# local backups and third-party plugin archives that are not part of the app
+original-md-backup/
+*.plugin
+*.skill

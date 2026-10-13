@@ -1,0 +1,18 @@
+/* English. Most keys are the English text itself, so only phrases that need more than that are listed here:
+   numbered plural forms, and words that mean different things in different places. */
+
+"Watching. jobs slowed.one" = "Watching. %d job slowed.";
+"Watching. jobs slowed.other" = "Watching. %d jobs slowed.";
+"on, jobs slowed.one" = "on, %d job slowed";
+"on, jobs slowed.other" = "on, %d jobs slowed";
+
+"seconds.one" = "%d second";
+"seconds.other" = "%d seconds";
+"minutes.one" = "%d minute";
+"minutes.other" = "%d minutes";
+"for seconds.one" = "%d second";
+"for seconds.other" = "%d seconds";
+"for minutes.one" = "%d minute";
+"for minutes.other" = "%d minutes";
+
+"Normal job" = "Normal";
