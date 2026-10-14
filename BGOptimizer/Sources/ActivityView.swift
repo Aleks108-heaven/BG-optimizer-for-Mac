@@ -12,11 +12,13 @@ struct ActivityActions {
     var showMenu: (ActivityRow) -> Void         // opens the row's menu at the mouse
     var setStartup: (StartupItem, Bool) -> Void // switch a startup item of yours on or off for the next login
     var openLoginSettings: () -> Void           // System Settings > Login Items & Extensions
+    var trashStorage: (StorageItem) -> Void     // move one item of the Storage tab to the Trash (you confirmed)
+    var revealStorage: (StorageItem) -> Void    // show it in Finder
 }
 
 /// State of the Activity window. The engine feeds `rows`; the Mac's own status is read here every 5 seconds while the window is open.
 final class ActivityModel: ObservableObject {
-    enum Tab: Int { case processes, startup, log }
+    enum Tab: Int { case processes, startup, storage, log }
 
     @Published var tab: Tab = .processes
     @Published var rows: [ActivityRow] = []
@@ -36,6 +38,11 @@ final class ActivityModel: ObservableObject {
     @Published var startup: [StartupItem] = []
     @Published var startupLoading = false
     @Published var startupSort = [KeyPathComparator(\StartupItem.kindRank), KeyPathComparator(\StartupItem.name)]
+    @Published var storage: [StorageItem] = []
+    @Published var storageLoading = false
+    @Published var storageSort = [KeyPathComparator(\StorageItem.sortBytes, order: .reverse)]
+    @Published var hideSmall = true             // hide caches and logs under 1 MB (leftovers are always shown)
+    @Published var pendingTrash: StorageItem?   // an item waiting for your confirmation before it goes to the Trash
     @Published var notice: String?              // result of your last action, shown for a few seconds
     @Published var noticeIsError = false
     private var noticeToken = UUID()
@@ -49,8 +56,10 @@ final class ActivityModel: ObservableObject {
     init() {}
 
     /// For snapshots only.
-    init(rows: [ActivityRow], system: SystemStatus, engineOn: Bool, tab: Tab = .processes, log: String = "", startup: [StartupItem] = []) {
+    init(rows: [ActivityRow], system: SystemStatus, engineOn: Bool, tab: Tab = .processes, log: String = "", startup: [StartupItem] = [],
+         storage: [StorageItem] = []) {
         self.startup = startup
+        self.storage = storage
         self.rows = rows
         self.ownCount = 312
         self.updated = Date()
@@ -104,6 +113,7 @@ final class ActivityModel: ObservableObject {
         tab = t
         if t == .log { logText = logProvider() }
         if t == .startup { refreshStartup() }
+        if t == .storage { refreshStorage() }
     }
 
     private let startupQueue = DispatchQueue(label: "bgopt.startup")
@@ -115,6 +125,32 @@ final class ActivityModel: ObservableObject {
             let items = StartupReader.read()
             DispatchQueue.main.async { self.startup = items; self.startupLoading = false }
         }
+    }
+
+    private let storageQueue = DispatchQueue(label: "bgopt.storage")
+    private var storageToken = UUID()
+
+    /// Looking through the Library takes a few seconds, so it runs in the background and only when the tab is opened or Refresh is pressed.
+    func refreshStorage() {
+        let token = UUID()
+        storageToken = token
+        storageLoading = true
+        storageQueue.async {
+            let items = StorageScanner.scan(ctx: StorageScanner.currentContext())
+            DispatchQueue.main.async {
+                guard self.storageToken == token else { return }       // a newer read is on its way
+                self.storage = items
+                self.storageLoading = false
+            }
+        }
+    }
+
+    var filteredStorage: [StorageItem] {
+        let q = query.trimmingCharacters(in: .whitespaces).lowercased()
+        var list = storage
+        if !q.isEmpty { list = list.filter { $0.name.lowercased().contains(q) } }
+        if hideSmall { list = list.filter { $0.kind == .leftover || ($0.bytes ?? 0) >= 1_000_000 } }
+        return list.sorted(using: storageSort)
     }
 
     /// Show a switch's new position at once, before the slower re-read finishes.
@@ -250,6 +286,7 @@ struct ActivityView: View {
             switch model.tab {
             case .processes: processes
             case .startup: startupView
+            case .storage: storageView
             case .log: logView
             }
         }
@@ -262,6 +299,14 @@ struct ActivityView: View {
             Button(tr("Cancel"), role: .cancel) { model.pending = nil }
         } message: { row in
             Text(row.confirmText ?? "")
+        }
+        .confirmationDialog(tr("Move “%@” to the Trash?", model.pendingTrash?.name ?? ""),
+                            isPresented: Binding(get: { model.pendingTrash != nil }, set: { if !$0 { model.pendingTrash = nil } }),
+                            titleVisibility: .visible, presenting: model.pendingTrash) { item in
+            Button(tr("Move to Trash"), role: .destructive) { actions.trashStorage(item); model.pendingTrash = nil }
+            Button(tr("Cancel"), role: .cancel) { model.pendingTrash = nil }
+        } message: { item in
+            Text(trashMessage(item))
         }
         .confirmationDialog(tr("Clear the activity log?"), isPresented: $model.askClearLog, titleVisibility: .visible) {
             Button(tr("Clear log"), role: .destructive) { actions.clearLog() }
@@ -353,11 +398,12 @@ struct ActivityView: View {
             Picker(tr("View"), selection: Binding(get: { model.tab }, set: { model.select($0) })) {
                 Text(tr("Processes")).tag(ActivityModel.Tab.processes)
                 Text(tr("Startup")).tag(ActivityModel.Tab.startup)
+                Text(tr("Storage")).tag(ActivityModel.Tab.storage)
                 Text(tr("Log")).tag(ActivityModel.Tab.log)
             }
             .pickerStyle(.segmented)
             .labelsHidden()
-            .frame(width: 320)
+            .frame(width: 400)
             Spacer()
             if model.tab != .log {
                 if model.tab == .processes { Toggle(tr("Hide idle processes"), isOn: $model.onlyActive).toggleStyle(.checkbox) }
@@ -549,6 +595,115 @@ struct ActivityView: View {
                 Spacer()
                 if model.startupLoading { ProgressView().controlSize(.small) }
                 Button(tr("Refresh")) { model.refreshStartup() }.buttonStyle(.link)
+            }
+            .padding(.horizontal, 16).padding(.vertical, 8)
+        }
+    }
+
+    // MARK: storage
+
+    private func sizeText(_ b: Int64) -> String {
+        let v = Double(b)
+        if v >= 1e9 { return tr("%.1f GB", v / 1e9) }
+        if v >= 1e6 { return tr("%.0f MB", v / 1e6) }
+        return tr("%.0f KB", max(v, 1) / 1e3)
+    }
+
+    private func storageDetail(_ item: StorageItem) -> String {
+        if let lock = item.lock { return tr(lock) }
+        return item.noteArg.map { tr(item.note, $0) } ?? tr(item.note)
+    }
+
+    private func trashMessage(_ item: StorageItem) -> String {
+        var parts: [String] = []
+        if let b = item.bytes { parts.append(tr("Size: %@.", (item.approximate ? "≥ " : "") + sizeText(b))) }
+        parts.append(storageDetail(item))
+        parts.append(tr("It stays in the Trash until you empty it, so you can put it back."))
+        return parts.joined(separator: "\n\n")
+    }
+
+    private func storageKindChip(_ k: StorageKind) -> some View {
+        let label: String
+        switch k {
+        case .cache: label = tr("Cache")
+        case .log: label = tr("Log files")
+        case .developer: label = tr("Developer")
+        case .leftover: label = tr("Possible leftover")
+        }
+        let leftover = k == .leftover
+        return Text(label).font(.caption.bold()).foregroundStyle(leftover ? Color.slowInk : Color.neuInk)
+            .padding(.horizontal, 9).padding(.vertical, 2).background(Capsule().fill(leftover ? Color.slowBg : Color.neuBg))
+    }
+
+    private func storageButtons(_ item: StorageItem) -> some View {
+        let why: String? = model.observeOnly ? tr("Turn off Observe only to change files") : item.lock.map { tr($0) }
+        return HStack(spacing: 8) {
+            Button { actions.revealStorage(item) } label: { Image(systemName: "magnifyingglass") }
+                .buttonStyle(.borderless)
+                .help(tr("Reveal in Finder"))
+                .accessibilityLabel(tr("Reveal “%@” in Finder", item.name))
+            Button { model.pendingTrash = item } label: { Image(systemName: "trash") }
+                .buttonStyle(.borderless)
+                .disabled(why != nil)
+                .help(why ?? tr("Move to Trash…"))
+                .accessibilityLabel(tr("Move “%@” to the Trash?", item.name))
+        }
+    }
+
+    private var storageView: some View {
+        VStack(spacing: 0) {
+            HStack(alignment: .top, spacing: 12) {
+                Label(tr("Only your own Library is listed. Nothing is deleted automatically: you choose each item, and Move to Trash can be undone from the Trash. System-wide files in /Library are never touched here."),
+                      systemImage: "info.circle")
+                    .font(.callout).foregroundStyle(Color.neuInk).fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
+                Toggle(tr("Hide items under 1 MB"), isOn: $model.hideSmall).toggleStyle(.checkbox)
+            }
+            .padding(10)
+            .background(RoundedRectangle(cornerRadius: 8).fill(Color.neuBg))
+            .padding(.horizontal, 16).padding(.bottom, 8)
+            if model.observeOnly {
+                Label(tr("Observe only: you can look, but not move anything. Turn it off in Settings to move items to the Trash."), systemImage: "eye")
+                    .font(.callout).foregroundStyle(Color.neuInk)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 16).padding(.bottom, 8)
+            }
+            if model.filteredStorage.isEmpty {
+                Text(model.storageLoading ? tr("Reading storage (a few seconds)…")
+                     : (model.query.trimmingCharacters(in: .whitespaces).isEmpty ? tr("Nothing to show here.") : tr("No item matches that name.")))
+                    .foregroundStyle(.secondary).frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                Table(model.filteredStorage, sortOrder: $model.storageSort) {
+                    TableColumn(tr("Item"), value: \.name) { item in
+                        VStack(alignment: .leading, spacing: 0) {
+                            Text(item.name).fontWeight(.semibold).lineLimit(1).truncationMode(.middle)
+                            Text((item.path as NSString).abbreviatingWithTildeInPath)
+                                .font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+                        }
+                        .help(item.path)
+                    }
+                    .width(min: 170, ideal: 250)
+                    TableColumn(tr("Kind"), value: \.kindRank) { item in storageKindChip(item.kind) }
+                        .width(min: 110, ideal: 140)
+                    TableColumn(tr("Size"), value: \.sortBytes) { item in
+                        Text(item.bytes.map { (item.approximate ? "≥ " : "") + sizeText($0) } ?? "—")
+                            .monospacedDigit().foregroundStyle(.secondary)
+                            .help(item.bytes == nil ? tr("Size not read: macOS keeps other apps' containers closed.") : "")
+                    }
+                    .width(min: 70, ideal: 90)
+                    TableColumn(tr("Details")) { item in
+                        Text(storageDetail(item)).font(.callout).foregroundStyle(.secondary).lineLimit(2).truncationMode(.tail).help(storageDetail(item))
+                    }
+                    TableColumn("") { item in storageButtons(item) }
+                        .width(56)
+                }
+            }
+            HStack {
+                Text(tr("Items: %d. Nothing is deleted automatically.", model.storage.count))
+                    .font(.caption).foregroundStyle(.secondary)
+                Spacer()
+                if model.storageLoading { ProgressView().controlSize(.small) }
+                Button(tr("Refresh")) { model.refreshStorage() }.buttonStyle(.link)
             }
             .padding(.horizontal, 16).padding(.vertical, 8)
         }

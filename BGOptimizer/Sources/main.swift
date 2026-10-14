@@ -181,6 +181,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         }
     }
 
+    /// Move one Storage item to the Trash. The checks are made again inside StorageAction, with a fresh look at what is running.
+    private func trashStorage(_ item: StorageItem) {
+        let observeOnly = model.settings.observeOnly
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            do {
+                let bytes = try StorageAction.moveToTrash(path: item.path, observeOnly: observeOnly, ctx: StorageScanner.currentContext())
+                self?.log.write("STORAGE", "\(item.path) moved to the Trash by you (\(bytes.map { "\($0) bytes" } ?? "size not read"))")
+                DispatchQueue.main.async {
+                    self?.activity.storage.removeAll { $0.id == item.id }
+                    self?.activity.showNotice(tr("Moved “%@” to the Trash.", item.name), error: false)
+                    self?.activity.refreshStorage()
+                }
+            } catch {
+                var key = "That item cannot be moved here."
+                if let e = error as? StorageError { switch e { case .notAllowed(let k), .failed(let k): key = k } }
+                self?.log.write("REFUSED", "storage \(item.path): \(key)")
+                DispatchQueue.main.async {
+                    self?.activity.showNotice(tr("Could not move “%@”: %@", item.name, tr(key)), error: true)
+                    self?.activity.refreshStorage()
+                }
+            }
+        }
+    }
+
     /// The menu of a row's "…" button, opened at the mouse.
     private func showRowMenu(_ row: ActivityRow) {
         let menu = NSMenu()
@@ -321,7 +345,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
                 },
                 showMenu: { [weak self] row in self?.showRowMenu(row) },
                 setStartup: { [weak self] item, on in self?.setStartup(item, on) },
-                openLoginSettings: { NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.LoginItems-Settings.extension")!) })
+                openLoginSettings: { NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.LoginItems-Settings.extension")!) },
+                trashStorage: { [weak self] item in self?.trashStorage(item) },
+                revealStorage: { item in
+                    let home = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library").path
+                    if item.path.hasPrefix(home + "/") { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: item.path)]) }
+                })
             w.contentView = NSHostingView(rootView: ActivityView(model: activity, actions: actions))
             w.contentMinSize = NSSize(width: 600, height: 440)
             w.isReleasedWhenClosed = false
@@ -365,20 +394,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             let w = activityWindow
             let policy = NSApp.activationPolicy() == .regular ? "regular (Dock icon)" : "accessory (menu bar only)"
             log.write("SELFTEST", "\(label): \(policy), minimized=\(w?.isMiniaturized ?? false), visible=\(w?.isVisible ?? false), "
-                      + "refreshTimer=\(activity.isRefreshing), engineBuildsRows=\(engine.activityEnabled), startupItems=\(activity.startup.count), mainMenuTitles=\(NSApp.mainMenu?.items.map { $0.title } ?? [])")
+                      + "refreshTimer=\(activity.isRefreshing), engineBuildsRows=\(engine.activityEnabled), startupItems=\(activity.startup.count), storageItems=\(activity.storage.count), mainMenuTitles=\(NSApp.mainMenu?.items.map { $0.title } ?? [])")
         }
         func at(_ t: Double, _ f: @escaping () -> Void) { DispatchQueue.main.asyncAfter(deadline: .now() + t, execute: f) }
         at(0.5) { state("start (nothing open)") }
         at(1.0) { self.showActivity() }
         at(1.5) { self.activity.select(.startup) }                   // reads the real startup list (about 3 s)
         at(5.5) { state("Startup tab loaded") }
-        at(5.6) { self.activityWindow?.miniaturize(nil) }
-        at(8.0) { state("window minimized") }
-        at(8.1) { self.activityWindow?.deminiaturize(nil) }
-        at(10.5) { state("window restored") }
-        at(10.6) { self.activityWindow?.close() }
-        at(12.0) { state("window closed") }
-        at(12.5) { NSApp.terminate(nil) }
+        at(5.6) { self.activity.select(.storage) }                   // reads your Library (read only)
+        at(10.0) { state("Storage tab loaded") }
+        at(10.1) { self.activityWindow?.miniaturize(nil) }
+        at(12.5) { state("window minimized") }
+        at(12.6) { self.activityWindow?.deminiaturize(nil) }
+        at(15.0) { state("window restored") }
+        at(15.1) { self.activityWindow?.close() }
+        at(16.5) { state("window closed") }
+        at(17.0) { NSApp.terminate(nil) }
     }
 
     // MARK: Dock icon, menu bar and window lifecycle
@@ -554,7 +585,8 @@ func snapshotActivityAndWelcome(prefix: String) -> Never {
             try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
         }
     }
-    let noActions = ActivityActions(slow: { _, _ in }, restore: { _ in }, protect: { _ in }, unprotect: { _ in }, clearLog: {}, showMenu: { _ in }, setStartup: { _, _ in }, openLoginSettings: {})
+    let noActions = ActivityActions(slow: { _, _ in }, restore: { _ in }, protect: { _ in }, unprotect: { _ in }, clearLog: {}, showMenu: { _ in }, setStartup: { _, _ in }, openLoginSettings: {},
+                                  trashStorage: { _ in }, revealStorage: { _ in })
     let status = SystemStatus(cpuLoad: 38, cores: 8, memoryUsedGB: 9.8, memoryTotalGB: 16, pressure: .elevated, thermal: .nominal,
                               lowPowerMode: true,
                               battery: BatteryStatus(percent: 63, charging: false, onAC: false, minutesRemaining: 512, health: "Good",
@@ -599,6 +631,20 @@ func snapshotActivityAndWelcome(prefix: String) -> Never {
         item("com.reverso.launcher", "Reverso", nil, .loginItem, trkey("At login"), true, nil, .settingsOnly(trkey("Managed in System Settings"))),
     ]
     render(ActivityView(model: ActivityModel(rows: rows, system: status, engineOn: true, tab: .startup, startup: startup), actions: noActions), size: size, appearance: .aqua, to: "\(prefix)-activity-startup.png")
+    func store(_ name: String, _ sub: String, _ kind: StorageKind, _ mb: Double?, _ note: String, _ arg: String? = nil, lock: String? = nil) -> StorageItem {
+        StorageItem(name: name, path: "/Users/you/Library/\(sub)/\(name)", kind: kind, bytes: mb.map { Int64($0 * 1e6) }, note: note, noteArg: arg, lock: lock)
+    }
+    let storage = [
+        store("net.protected.macos.TotalAV", "Application Support", .leftover, 275, StorageScanner.noteLeftover, "protected"),
+        store("com.google.Chrome", "Caches", .cache, 812, StorageScanner.noteCache, lock: StorageScanner.lockRunning),
+        store("MyApp-bkqvrnhxmq", "Developer/Xcode/DerivedData", .developer, 640, StorageScanner.noteDeveloper),
+        store("Homebrew", "Caches", .cache, 188, StorageScanner.noteCache),
+        store("Zoom", "Logs", .log, 21, StorageScanner.noteLog),
+        store("com.malwarebytes.mbam", "Application Support", .leftover, 0.004, StorageScanner.noteLeftover, "malwarebytes"),
+        store("com.eset.agent.finderextension", "Containers", .leftover, nil, StorageScanner.noteLeftover, "eset"),
+        store("com.swiftlydetecting.agent.plist", "Preferences", .leftover, 0.004, StorageScanner.noteLeftover, "swiftlydetecting"),
+    ]
+    render(ActivityView(model: ActivityModel(rows: rows, system: status, engineOn: true, tab: .storage, storage: storage), actions: noActions), size: size, appearance: .aqua, to: "\(prefix)-activity-storage.png")
     render(ActivityView(model: ActivityModel(rows: rows, system: status, engineOn: true, tab: .log, log: log), actions: noActions), size: size, appearance: .aqua, to: "\(prefix)-activity-log.png")
     render(SettingsView(model: AppModel(previewEnabled: true), actions: SettingsActions(setLogin: { _ in }, giveBack: {})),
            size: NSSize(width: 520, height: 560), appearance: .aqua, to: "\(prefix)-settings-light.png")

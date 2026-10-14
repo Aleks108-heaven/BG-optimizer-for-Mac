@@ -62,6 +62,7 @@ translations() { python3 tools/check_strings.py; }
 log_test() { build log tests/log_test.swift "${CORE[@]}" && BGOPT_LOG_DIR="$W/logdir" "$W/log.app/Contents/MacOS/t"; }
 menu_test() { build menu tests/row_menu_test.swift "${CORE[@]}" Sources/RowMenu.swift && "$W/menu.app/Contents/MacOS/t"; }
 startup_test() { build startup tests/startup_test.swift "${CORE[@]}" Sources/StartupItems.swift Sources/ToolRunner.swift && "$W/startup.app/Contents/MacOS/t"; }
+storage_test() { build storage tests/storage_test.swift "${CORE[@]}" Sources/Storage.swift && "$W/storage.app/Contents/MacOS/t"; }
 manual_test() {
   swiftc -O tests/sleeper.swift -o "$W/bgsleeper" 2>&1 | grep error
   mkdir -p "$W/fake/Google Chrome.app/Contents/MacOS"; cp "$W/bgsleeper" "$W/fake/Google Chrome.app/Contents/MacOS/bgsleeper"
@@ -80,6 +81,7 @@ section "translations" 60 translations
 section "log: permissions, one line per entry, clear" 300 log_test
 section "row menu: contents for every kind of row, both languages" 300 menu_test
 section "startup items: parsing, rules for changing, real read" 300 startup_test
+section "storage: what is offered, what is never offered, the rules for Move to Trash" 300 storage_test
 section "changing jobs by hand: rules enforced by the engine" 360 manual_test
 [ -d "build/BG Optimizer.app" ] && section "finished app: start-up test (windows, Dock icon, minimize)" 120 app_test
 

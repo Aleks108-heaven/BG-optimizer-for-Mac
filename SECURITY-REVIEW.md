@@ -1,6 +1,6 @@
 # BG Optimizer: security and performance review
 
-Date: 2026-10-13 (S-11 to S-13 added 2026-10-14). Reviewer: the assistant that wrote the app (so this is a self-review, not independent). Machine: M1 MacBook, macOS 27.
+Date: 2026-10-13 (S-11 to S-13 added 2026-10-14; S-14 to S-17, the Storage tab, added 2026-10-14). Reviewer: the assistant that wrote the app (so this is a self-review, not independent). Machine: M1 MacBook, macOS 27.
 Method: the project's own `security-checklist.md` (items 1 to 12) applied to a local app, reading the source, inspecting the built app with `codesign`, `otool`, `lsof`, and measuring CPU with `ps` and `sample`.
 Automated checks you can rerun: `./BGOptimizer/tests/run.sh` (translations, log, row menu, startup items, changing jobs by hand).
 
@@ -14,6 +14,7 @@ Automated checks you can rerun: `./BGOptimizer/tests/run.sh` (translations, log,
 | What can it change on other programs? | Only processes owned by the same user: put them in background mode (reversible), and switch your own LaunchAgents on or off for the next login (reversible) | `setpriority` on same-user processes; `launchctl disable|enable gui/<uid>/<label>` |
 | What can it never touch? | System processes, security tools, local AI hosts, this app, the app in front, anything on your protected list; macOS (`com.apple.`) startup items, security tools' startup items | Covered by the automated checks in `BGOptimizer/tests/` (changing jobs by hand and startup items). |
 | Third-party code? | None. Only Apple frameworks. | `otool -L` |
+| Can it delete files? | Only the Storage tab, only into the Trash, one item at a time after a confirmation, only direct children of ten listed folders of your own Library | `StorageAction.moveToTrash` rechecks the folder (symbolic links resolved), that the item is not a link, the leftover and in-use rules, and Observe only. 78 checks in `tests/storage_test.swift`. |
 | External programs it launches? | `system_profiler` (battery health), `launchctl`, `sfltool` (read the startup list), by full path with fixed arguments, never through a shell | `grep Process()` in Sources |
 
 ## Findings
@@ -33,6 +34,10 @@ Automated checks you can rerun: `./BGOptimizer/tests/run.sh` (translations, log,
 | S-11 | Medium (for sharing) | The checksum file is published next to the installer, so it detects a corrupted download but not a replaced one. | **Fixed for new releases**: the workflow signs a build record (`actions/attest-build-provenance`) for the `.dmg` when a version tag is built; check with `gh attestation verify`. Not yet used by a release: v1.0.0 predates it. |
 | S-12 | Low | No hardened runtime (signature flags `adhoc` only), so another program of the same user could inject code with `DYLD_INSERT_LIBRARIES`. The app holds no permissions to inherit, so the gain is small. | **Fixed**: `build.sh` signs with `--options runtime` (flags `adhoc,runtime`). All automated checks pass with it. |
 | S-13 | Low | The workflow used its actions by moving tag (`@v4`), and nothing kept them up to date. | **Fixed**: pinned by commit hash, and `.github/dependabot.yml` proposes updates weekly. |
+| S-14 | Medium | **New in 1.1.0: a feature that can remove files.** A wrong path, a symbolic link or a crafted name could make it move something it should not. | **Controls in place and tested**: whole items only, directly inside one of ten fixed folders (path tricks, `..`, relative paths, a listed folder that is itself a link, links as items, control characters in names all refused); `com.apple.`, this app's files and installed security tools refused; the Trash (not delete) so it can be put back; the rules are recomputed when you press the button. |
+| S-15 | Low | "Possible leftover" is a guess from a name: a settings file of a command-line tool or an app run from an odd place can be listed. | **Accepted, mitigated**: matching is by maker and also asks macOS whether an app with that identifier exists anywhere; confirmation with the reason; Trash is reversible; running makers are locked. In practice the dogfooding run listed real leftovers (see DESIGN.md section 16). |
+| S-16 | Low | Between the last check and the move, the item could be swapped for a link. | **Accepted**: the Trash moves a link as a link, not what it points to, and the parent is still one of the listed folders. Same-user only. |
+| S-17 | Info | The app now reads the names (not the contents) of other apps' containers, and sizes of other apps' folders in your Library. It holds no extra permission; macOS keeps container contents closed. | **By design**, no new permission requested. |
 
 Not covered: fuzzing of the parsers, a review by someone other than the author, hostile local users beyond file permissions, and the behaviour of macOS itself.
 

@@ -214,3 +214,32 @@ off in System Settings show as Off with a Settings button.
 administrator).
 **Not verified:** that a switched-off agent really does not start after the next login (needs a logout; the setting
 itself is read back from launchd), and the System Settings button (it opens the Login Items pane).
+
+## 16. Storage (caches, logs and leftovers)
+
+**Why.** Removing an app often leaves files behind: settings, containers, caches, and registrations that show as Off or
+"Unknown" in System Settings. A person may want to see them. A cleaner that deletes by guess is the opposite of this app's
+promise, so this tab is built as the safe version of one.
+
+**Design.** A Storage tab: caches, logs and Xcode build files of apps that are there, and *possible leftovers*. Each row has
+Reveal in Finder and Move to Trash… (confirmation, Cancel by default). No automatic cleaning, no schedule, no "clean all".
+Move to Trash keeps the promise that every change is reversible. It is disabled in Observe only mode, like changing jobs by hand.
+
+**What counts as a possible leftover.** A name that is a reverse-DNS identifier (starts with `com.`, `org.`, `net.`, ...;
+a team ID or `group.` prefix is read through), whose *maker* (the part after the prefix) matches no installed app (the
+usual Applications folders, two levels deep, including helpers and extensions inside apps) and no app that macOS can find by
+that exact identifier. Matching on the maker, not the whole identifier, errs on the side of showing less: a leftover of a removed
+app from a maker you still have another app from is not listed. Plain names ("Mac Monitor"), file names and team-prefixed names
+that are not reverse-DNS are never listed, because they do not say who owns them. Apple's own items are never listed.
+
+**Dogfooding found these on the development Mac:** a first version listed 138 "leftovers"; most were wrong (file names such as
+`default.store`, Apple groups such as `groups.com.apple.podcasts`, Microsoft Office containers, Shortcuts). The rule was
+tightened to reverse-DNS only, which left 116 real vendor leftovers (TotalAV 275 MB, CleanMyMac, Avira, ESET, Malwarebytes, ...),
+plus the test runs' own settings files, which the self-test now removes.
+
+**Used by a running app.** Evaluated at scan time and again when you press the button, from the programs running at that
+moment (their bundle identifiers and path names). It is a best-effort guard; the Trash is the real safety net.
+
+**Not built, on purpose:** automatic or scheduled cleaning; permanent delete; anything in `/Library`; removing system
+extensions (needs SIP off, or the vendor's uninstaller); guessing leftovers from plain folder names; Full Disk Access.
+**Not verified:** the buttons clicked in the real window; moving another app's container (macOS 14+ protects those).

@@ -142,6 +142,18 @@ is written to the log as `LOGIN`. Command line: `BGOptimizer --login on|off|stat
   apps show their state and a **Settings…** button that opens System Settings, because changing them needs an
   administrator. Security tools, macOS items and this app are locked. The list takes a few seconds to read and is read
   only when the tab is opened or Refresh is pressed.
+- *Storage*: what is taking space in **your own Library**: app caches, app logs, Xcode build files, and **possible
+  leftovers** of apps you removed (settings, containers and caches whose maker has no app installed or running; for
+  example what ESET or Malwarebytes leave behind). It is read only until you act: each row has **Reveal in Finder** and
+  **Move to Trash…** (a confirmation first, Cancel is the default). Nothing is deleted and nothing is cleaned
+  automatically; the Trash keeps the item until you empty it, so it can be put back. It is refused while Observe only is
+  on, for an item used by a running app, for macOS's own items (`com.apple.`), this app's own files, an installed
+  security tool's caches and logs, symbolic links, and anything outside the listed folders. Only direct children of
+  `~/Library/Caches`, `Logs`, `Developer/Xcode/DerivedData`, `Application Support`, `Preferences`, `Saved Application State`,
+  `HTTPStorages`, `Application Scripts`, `Containers` and `Group Containers` are ever looked at; `/Library` and system
+  extensions are never touched (to remove those, use the vendor's uninstaller). "Possible leftover" is a guess from
+  the name (a `com.`/`org.`/`net.` identifier whose maker has no installed app), so read the row before you move it. The
+  size of another app's container is not read (macOS keeps it closed), and macOS may refuse to move one; do that in Finder.
 - *Log*: the recent activity log, with **Clear log…** (asks first). The full log is
   `~/Library/Logs/BGOptimizer/actions.log` (rolls over at 1 MB).
 
@@ -172,13 +184,18 @@ Activity window stops refreshing while it is minimized, covered or closed, and c
   confirmation; the job must still be the same process; it is refused while the app is switched off or in Observe only.
   Every action and every refusal is written to the log.
 
+- **Storage is the one place that removes files from where they were**, and only into the Trash, one item at a time, after
+  you confirm. See the *Storage* bullet above for what is refused; the rules are checked again at the moment you press
+  the button, not only when the list was drawn.
+
 See `SECURITY-REVIEW.md` for the attack surface, findings and performance measurements.
 
 ## Automated checks
 
     ./BGOptimizer/tests/run.sh
 
-Checks the translations, the log (private permissions, one line per entry, clear), the row menu, startup items
+Checks the translations, the log (private permissions, one line per entry, clear), the row menu, the Storage rules (what is
+offered, what is never offered, every refusal for Move to Trash, in a stand-in home folder), startup items
 (parsing, the rules for changing, a real read), the rules for changing jobs by hand (with harmless sleeper processes;
 a system process of the current user is used only to confirm it is refused), and a start-up test of the finished app
 (windows, Dock icon, minimize and restore). About a minute. On a machine without a Finder, a per-user launchd domain or
@@ -206,7 +223,7 @@ Design notes and the reasoning behind decisions are in `DESIGN.md`. The QA notes
 ## Status and limits
 
 Tested on an M1 MacBook (16 GB) running macOS 27 with CPU-burner scripts, harmless sleeper processes and the real
-system. Verified there (the 75 automated checks plus manual checks):
+system. Verified there (the 162 automated checks plus manual checks):
 
 - slowing (scheduler priority 31 to 4), release on calm-down, on quit and on SIGTERM, recovery after `kill -9`,
   single instance, protection lists including user-added names;
@@ -226,7 +243,8 @@ system. Verified there (the 75 automated checks plus manual checks):
 - the menu-bar panel's accent-colored switch and a popup menu opening at the mouse were confirmed in the running app
   by a user.
 
-Not tested by hand: the final right-aligned placement of the row menu (an earlier placement was confirmed), the confirmation dialog and the banner in the real window, column sorting, Hide idle processes,
+Not tested by hand: the Storage tab clicked in the real app (Reveal in Finder, the confirmation, Move to Trash; the rules behind
+them are tested), moving another app's container to the Trash (macOS may ask or refuse), the final right-aligned placement of the row menu (an earlier placement was confirmed), the confirmation dialog and the banner in the real window, column sorting, Hide idle processes,
 the Language picker clicked in the real app, the welcome window's Get started button, the panel's Restore button in
 the real app (only the engine call behind it), turning Launch at login on from this version, release when a slowed
 app is brought to the foreground, a Mac without a battery (the battery tile is hidden there), any chip other than the

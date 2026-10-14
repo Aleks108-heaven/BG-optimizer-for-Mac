@@ -267,3 +267,37 @@
 "Nothing starts by itself." = "Нічого не запускається саме.";
 "Startup items: %d. Switching one off never stops what is running." = "Елементів автозапуску: %d. Вимкнення ніколи не зупиняє те, що вже працює.";
 "Refresh" = "Оновити";
+
+/* Storage tab */
+"Cache" = "Кеш";
+"Log files" = "Файли журналів";
+"Developer" = "Розробка";
+"Possible leftover" = "Можливий залишок";
+"Size" = "Розмір";
+"Cache of an app. Apps rebuild it, so the first start afterwards can be a little slower." = "Кеш програми. Програми створюють його знову, тож перший запуск після цього може бути трохи повільнішим.";
+"Log files of an app. Apps write new ones when they need them." = "Файли журналів програми. Програми записують нові, коли це потрібно.";
+"Xcode build files. Xcode makes them again the next time you build." = "Файли збирання Xcode. Xcode створить їх знову під час наступного збирання.";
+"No app from “%@” is installed or running. Make sure you no longer use it." = "Жодної програми від «%@» не встановлено й не запущено. Переконайтеся, що вона вам більше не потрібна.";
+"Used by a running app: quit it first." = "Використовується запущеною програмою: спершу закрийте її.";
+"That item cannot be moved here." = "Цей елемент не можна перемістити тут.";
+"Turn off Observe only to change files" = "Вимкніть «Лише спостереження», щоб змінювати файли";
+"macOS did not allow it. Try it in Finder." = "macOS цього не дозволила. Спробуйте у Finder.";
+"Only your own Library is listed. Nothing is deleted automatically: you choose each item, and Move to Trash can be undone from the Trash. System-wide files in /Library are never touched here." = "Показано лише вашу власну Бібліотеку. Нічого не видаляється автоматично: ви самі вибираєте кожен елемент, а переміщення до Кошика можна скасувати з Кошика. Системні файли в /Library тут ніколи не чіпаються.";
+"Hide items under 1 MB" = "Сховати елементи менше 1 МБ";
+"Reveal in Finder" = "Показати у Finder";
+"Reveal “%@” in Finder" = "Показати «%@» у Finder";
+"Move to Trash…" = "Перемістити до Кошика…";
+"Move “%@” to the Trash?" = "Перемістити «%@» до Кошика?";
+"Move to Trash" = "Перемістити до Кошика";
+"Size: %@." = "Розмір: %@.";
+"It stays in the Trash until you empty it, so you can put it back." = "Він залишається в Кошику, доки ви його не очистите, тож його можна повернути.";
+"Reading storage (a few seconds)…" = "Зчитування сховища (кілька секунд)…";
+"Nothing to show here." = "Тут нічого показувати.";
+"No item matches that name." = "Жоден елемент не відповідає цій назві.";
+"Items: %d. Nothing is deleted automatically." = "Елементів: %d. Нічого не видаляється автоматично.";
+"%.0f MB" = "%.0f МБ";
+"%.0f KB" = "%.0f КБ";
+"Size not read: macOS keeps other apps' containers closed." = "Розмір не зчитано: macOS не дозволяє читати контейнери інших програм.";
+"Observe only: you can look, but not move anything. Turn it off in Settings to move items to the Trash." = "Лише спостереження: можна дивитися, але не переміщувати. Вимкніть його в Налаштуваннях, щоб переміщувати елементи до Кошика.";
+"Moved “%@” to the Trash." = "«%@» переміщено до Кошика.";
+"Could not move “%@”: %@" = "Не вдалося перемістити «%1$@»: %2$@";

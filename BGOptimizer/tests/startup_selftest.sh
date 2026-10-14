@@ -8,7 +8,7 @@ set -uo pipefail
 APP="${1:?usage: startup_selftest.sh <path to BG Optimizer.app>}"
 if ! pgrep -x WindowServer >/dev/null; then echo "SKIPPED: no window server on this machine, so windows cannot be opened"; exit 0; fi
 W="$(mktemp -d)"; ID="com.example.bgopt.selftest.$$"
-trap 'kill "$PID" 2>/dev/null; defaults delete "$ID" 2>/dev/null; rm -rf "$W"' EXIT
+trap 'kill "$PID" 2>/dev/null; wait "$PID" 2>/dev/null; defaults delete "$ID" 2>/dev/null; rm -f "$HOME/Library/Preferences/$ID.plist"; rm -rf "$W"' EXIT
 ditto --noextattr "$APP" "$W/T.app"
 /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $ID" "$W/T.app/Contents/Info.plist"
 codesign --force --sign - "$W/T.app" 2>/dev/null
@@ -18,16 +18,18 @@ attempt() {
 rm -rf "$W/log"
 BGOPT_LOG_DIR="$W/log" "$W/T.app/Contents/MacOS/BGOptimizer" --selftest-window >"$W/out.txt" 2>&1 &
 PID=$!
-for _ in $(seq 1 40); do kill -0 "$PID" 2>/dev/null || break; sleep 1; done
-if kill -0 "$PID" 2>/dev/null; then echo "FAIL: the app did not finish the test in 40 s"; return 1; fi
+for _ in $(seq 1 60); do kill -0 "$PID" 2>/dev/null || break; sleep 1; done
+if kill -0 "$PID" 2>/dev/null; then echo "FAIL: the app did not finish the test in 60 s"; return 1; fi
 LOG="$W/log/actions.log"; FAIL=0
 expect() { if grep -E "SELFTEST $1" "$LOG" | grep -qE "$2"; then echo "  pass $3"; else echo "  FAIL $3"; grep "SELFTEST $1" "$LOG" | cut -c1-200; FAIL=1; fi; }
 expect "start" "accessory" "starts as a menu-bar-only app"
 expect "Startup tab loaded" "regular.*refreshTimer=true, engineBuildsRows=true" "window open: Dock icon, refreshing, rows being built"
+expect "Storage tab loaded" "regular.*refreshTimer=true, engineBuildsRows=true" "Storage tab opens and reads the Library (read only)"
 expect "window minimized" "regular.*minimized=true.*refreshTimer=false, engineBuildsRows=false" "minimized: keeps its Dock icon, stops all work"
 expect "window restored" "regular.*minimized=false.*refreshTimer=true, engineBuildsRows=true" "restored: work resumes"
 expect "window closed" "accessory.*refreshTimer=false, engineBuildsRows=false" "closed: back to menu-bar-only"
 grep -E "SELFTEST Startup tab loaded" "$LOG" | grep -oE "startupItems=[0-9]+" | sed 's/^/  info /'
+grep -E "SELFTEST Storage tab loaded" "$LOG" | grep -oE "storageItems=[0-9]+" | sed 's/^/  info /'
 [ $FAIL -eq 0 ]
 
 }
