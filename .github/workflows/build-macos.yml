@@ -18,11 +18,17 @@ jobs:
     # arm64 runner. It runs a different macOS than the Mac the app was written on, which is itself a useful test.
     runs-on: macos-14
     timeout-minutes: 30
+    # id-token and attestations are used only by the provenance step, which runs for version tags. On pull requests
+    # from forks GitHub gives the job a read-only token anyway.
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
     defaults:
       run:
         working-directory: BGOptimizer
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Machine and toolchain
         run: |
@@ -45,8 +51,16 @@ jobs:
           shasum -a 256 BG-Optimizer-*-arm64.dmg > SHA256SUMS.txt
           cat SHA256SUMS.txt
 
+      - name: Sign the build record (provenance) for the installer
+        # A signed statement from GitHub that this exact .dmg was built from this repository and tag by this workflow.
+        # The checksum file only proves the download is not corrupted; this proves where the file came from.
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: actions/attest-build-provenance@96278af6caaf10aea03fd8d33a09a777ca52d62f # v3.2.0
+        with:
+          subject-path: BGOptimizer/dist/BG-Optimizer-*-arm64.dmg
+
       - name: Keep the installer
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: bg-optimizer-macos-arm64
           path: |
@@ -62,7 +76,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: bg-optimizer-macos-arm64
           path: dist

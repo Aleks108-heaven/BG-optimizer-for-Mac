@@ -16,7 +16,7 @@ swiftc -O -swift-version 5 -target "$(uname -m)-apple-macos13.0" Sources/*.swift
 cp Info.plist "$APP/Contents/Info.plist"
 cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 cp -R Resources/en.lproj Resources/uk.lproj "$APP/Contents/Resources/"
-codesign --force --sign - "$APP"
+codesign --force --sign - --options runtime "$APP"      # ad hoc, with the hardened runtime (no code injection)
 codesign --verify --strict "$APP"
 
 copy_to() {

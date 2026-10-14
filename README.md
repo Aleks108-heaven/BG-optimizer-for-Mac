@@ -42,6 +42,12 @@ checksum file, from the folder that holds both:
 
     shasum -a 256 -c SHA256SUMS.txt
 
+The checksum only shows that the download is not corrupted, because it comes from the same place as the installer. For
+releases built after v1.0.0, GitHub also signs a build record that proves the `.dmg` was built from this repository
+by this workflow. Check it before you remove the quarantine flag below (needs the GitHub CLI, `brew install gh`):
+
+    gh attestation verify BG-Optimizer-<version>-arm64.dmg --repo Aleks108-heaven/BG-optimizer-for-Mac
+
 Open the `.dmg` and drag *BG Optimizer* onto *Applications*.
 
 **Opening it the first time.** The app is signed ad hoc (the minimum Apple Silicon needs to run it) but it is not

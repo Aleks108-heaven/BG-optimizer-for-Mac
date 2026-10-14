@@ -1,0 +1,7 @@
+# Keeps the GitHub Actions used by the build workflow (pinned by commit) up to date, with a pull request for each update.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
