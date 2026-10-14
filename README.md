@@ -116,7 +116,8 @@ is written to the log as `LOGIN`. Command line: `BGOptimizer --login on|off|stat
   Power Mode, and health: condition, maximum capacity, cycle count) and free storage. A tile shows a warning symbol and
   wording, not just a color, when something needs attention. Battery health is read from the same source as System
   Information. Free storage counts space macOS can reclaim, like Finder does, so it is a little higher than `df`.
-- *Processes*: all of the user's own processes (not system or other users'), busiest first, with CPU use and a status
+- *Processes*: all of the user's own processes (not system or other users'), busiest first, with CPU use, **Memory** (the
+  figure Activity Monitor shows, read only; click the header to see which use the most) and a status
   chip: Slowed, Watching, Would slow (observe only), Skipped (browsers, calls, media, editors, the app in front: never
   slowed automatically), Protected (system, security, local AI, the protected list: never slowed, even by you) or
   Normal, plus the reason in plain words. Click a column header to sort, filter by name, or hide idle processes. The
@@ -223,7 +224,7 @@ Design notes and the reasoning behind decisions are in `DESIGN.md`. The QA notes
 ## Status and limits
 
 Tested on an M1 MacBook (16 GB) running macOS 27 with CPU-burner scripts, harmless sleeper processes and the real
-system. Verified there (the 162 automated checks plus manual checks):
+system. Verified there (the 165 automated checks plus manual checks):
 
 - slowing (scheduler priority 31 to 4), release on calm-down, on quit and on SIGTERM, recovery after `kill -9`,
   single instance, protection lists including user-added names;

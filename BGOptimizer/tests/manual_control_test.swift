@@ -35,6 +35,9 @@ func isLocked(_ r: ActivityRow?) -> Bool { if case .locked? = r.map({ $0.access 
 at(3)   { print("rows offered before any action")
           check(isOK(rows[sleeper]), "normal job may be slowed directly")
           check(isConfirm(rows[chrome]), "browser-like job needs a confirmation")
+          check((rows[sleeper]?.memBytes ?? 0) > 100_000, "the row carries the memory the process uses (read only)")
+          check((ProcTable.memoryFootprint(getpid()) ?? 0) > 1_000_000, "this program's own memory is read (more than 1 MB)")
+          check(ProcTable.memoryFootprint(999_999) == nil, "a process that does not exist has no memory reading")
           if finder != 0 { check(isLocked(rows[finder]) && rows[finder]?.canProtect == false, "a system process is locked and cannot even be added to the list") } else { print("  skipped: no system process to test against") } }
 at(3.2) { print("[A] slow a normal job"); engine.slowManually(pid: sleeper, start: startOf(sleeper), confirmedInteractive: false) }
 at(4.5) { check(pri(sleeper) == "4", "priority 31 -> 4 (read with ps)"); check(rows[sleeper]?.canRestore == true, "table now offers Restore")

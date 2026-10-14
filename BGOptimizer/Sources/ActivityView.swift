@@ -453,6 +453,10 @@ struct ActivityView: View {
                         }
                     }
                     .width(min: 100, ideal: 110)
+                    TableColumn(tr("Memory"), value: \.memBytes) { row in
+                        Text(row.memBytes == 0 ? "—" : sizeText(Int64(row.memBytes))).monospacedDigit().foregroundStyle(.secondary)
+                    }
+                    .width(min: 70, ideal: 85)
                     TableColumn(tr("Status"), value: \.statusRank) { row in StatusChip(status: row.status) }
                         .width(min: 105, ideal: 120)
                     TableColumn(tr("Details")) { row in
@@ -485,7 +489,7 @@ struct ActivityView: View {
     private var footer: some View {
         HStack {
             Text(model.engineOn
-                 ? tr("Your processes: %d. Updated every 5 seconds.", model.ownCount)
+                 ? tr("Your processes: %d. Updated every 5 seconds. Click Memory to see which use the most.", model.ownCount)
                  : tr("Updated every 5 seconds while it is on."))
                 .font(.caption).foregroundStyle(.secondary)
             Spacer()

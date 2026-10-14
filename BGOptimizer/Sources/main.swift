@@ -593,9 +593,9 @@ func snapshotActivityAndWelcome(prefix: String) -> Never {
                                                      maxCapacity: "85%", cycles: 670),
                               storageFreeGB: 608, storageTotalGB: 994)
     func row(_ pid: Int32, _ name: String, _ cpu: Double, _ status: JobStatus, _ detail: String,
-             access: ManualAccess = .ok, lock: String? = nil, restore: Bool = false, protect: Bool = true, entry: String? = nil) -> ActivityRow {
+             access: ManualAccess = .ok, lock: String? = nil, restore: Bool = false, protect: Bool = true, entry: String? = nil, mem: Double = 80) -> ActivityRow {
         ActivityRow(pid: pid, start: 1, name: name, protectName: name, userEntry: entry, cpu: cpu, status: status, detail: detail, access: access,
-                    confirmText: nil, lockReason: lock, canRestore: restore, canProtect: protect)
+                    confirmText: nil, lockReason: lock, canRestore: restore, canProtect: protect, memBytes: UInt64(mem * 1e6))
     }
     let rows = [
         row(1, "HandBrakeCLI", 96, .slowed, tr("Slowed %@", ago(Date().addingTimeInterval(-240))), access: .locked, restore: true),

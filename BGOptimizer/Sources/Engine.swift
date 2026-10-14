@@ -49,6 +49,7 @@ struct ActivityRow: Identifiable {
     let lockReason: String?    // why it cannot be changed (already translated)
     let canRestore: Bool
     let canProtect: Bool
+    var memBytes: UInt64 = 0   // memory the process is responsible for (read only, shown in the Processes tab)
     var id: Int32 { pid }
 
     /// For sorting the Status column.
@@ -359,7 +360,8 @@ final class Engine {
             }
             rows.append(ActivityRow(pid: pid, start: s.start, name: name, protectName: Policy.appName(path: path), userEntry: userEntry,
                                     cpu: p, status: status, detail: detail, access: access, confirmText: confirm, lockReason: lock,
-                                    canRestore: slowed[pid] != nil, canProtect: userEntry == nil && verdict != .never && !path.isEmpty))
+                                    canRestore: slowed[pid] != nil, canProtect: userEntry == nil && verdict != .never && !path.isEmpty,
+                                    memBytes: ProcTable.memoryFootprint(pid) ?? 0))
         }
         rows.sort { $0.cpu > $1.cpu }
         let total = own.count

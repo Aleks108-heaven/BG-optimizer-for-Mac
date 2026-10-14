@@ -58,6 +58,16 @@ enum ProcTable {
         return out
     }
 
+    /// The memory a process is responsible for, in bytes: the same "Memory" figure Activity Monitor shows (physical footprint).
+    /// Read only. nil when macOS does not let us read it (other users' processes).
+    static func memoryFootprint(_ pid: Int32) -> UInt64? {
+        var info = rusage_info_v4()
+        let r = withUnsafeMutablePointer(to: &info) {
+            $0.withMemoryRebound(to: rusage_info_t?.self, capacity: 1) { proc_pid_rusage(pid, RUSAGE_INFO_V4, $0) }
+        }
+        return r == 0 ? info.ri_phys_footprint : nil
+    }
+
     static func path(_ pid: Int32) -> String {
         var buf = [CChar](repeating: 0, count: 4096)
         return proc_pidpath(pid, &buf, UInt32(buf.count)) > 0 ? String(cString: buf) : ""

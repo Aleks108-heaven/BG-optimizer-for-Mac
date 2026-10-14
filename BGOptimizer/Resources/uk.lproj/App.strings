@@ -185,7 +185,7 @@
 "Skipped" = "Пропущено";
 "Never slowed automatically: browsers, calls, audio, editors, the app in front, or anything keeping the Mac awake. You can still slow one yourself, after a warning." = "Автоматично не сповільнюється: браузери, дзвінки, аудіо, редактори, програма на передньому плані та все, що не дає Mac заснути. Ви можете сповільнити таке самі — після попередження.";
 "System, security, local AI, or an app on your list. Cannot be slowed, even by you." = "Система, засоби безпеки, локальний ШІ або програма з вашого списку. Їх не можна сповільнити, навіть вам.";
-"Your processes: %d. Updated every 5 seconds." = "Ваших процесів: %d. Оновлюється кожні 5 секунд.";
+"Your processes: %d. Updated every 5 seconds. Click Memory to see which use the most." = "Ваших процесів: %d. Оновлюється кожні 5 секунд. Натисніть «Пам’ять», щоб побачити, які використовують найбільше.";
 "Hide idle processes" = "Сховати неактивні процеси";
 "Actions for %@" = "Дії для %@";
 "Slow down now" = "Сповільнити зараз";
