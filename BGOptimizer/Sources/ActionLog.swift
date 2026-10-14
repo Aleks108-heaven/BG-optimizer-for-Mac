@@ -48,7 +48,7 @@ final class ActionLog {
 
     func write(_ tag: String, _ msg: String) {
         // One entry = one line: a process name or path may contain newlines or other control characters.
-        let msg = String(String.UnicodeScalarView(msg.unicodeScalars.map { $0.value < 0x20 || $0.value == 0x7F ? " " : $0 }))
+        let msg = plainText(msg)
         q.async {
             let line = "\(self.stamp.string(from: Date()))  \(tag.padding(toLength: 8, withPad: " ", startingAt: 0)) \(msg)\n"
             if self.echo { FileHandle.standardOutput.write(Data(line.utf8)) }

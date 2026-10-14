@@ -178,7 +178,7 @@ enum StartupReader {
         for (dir, kind) in sources {
             for a in scan(dir) where !a.label.hasPrefix("com.apple.") {
                 let rec = btmByLabel[a.label]
-                let name = displayName(btmName: rec?.name, program: a.program, label: a.label)
+                let name = plainText(displayName(btmName: rec?.name, program: a.program, label: a.label))
                 let disabledByLaunchd = (kind == .systemDaemon ? disabledSystem : disabledUser)[a.label] == true
                 let allowed = rec?.allowed
                 let enabled: Bool? = kind == .userAgent ? !(disabledByLaunchd || a.plistDisabled || allowed == false)
@@ -200,7 +200,7 @@ enum StartupReader {
             guard let id = r.identifier else { continue }
             let label = StartupParsers.labelFromBTMIdentifier(id)
             guard !seen.contains(label), !label.hasPrefix("com.apple.") else { continue }
-            let name = r.name ?? label
+            let name = plainText(r.name ?? label)
             let control: StartupControl = label == ownID ? .locked(trkey("This app: use Launch at login in Settings"))
                 : (isSecurityTool(label + " " + name) ? .locked(trkey("Security tool")) : .settingsOnly(trkey("Managed in System Settings")))
             items.append(StartupItem(label: label, name: name, developer: r.developer, kind: .loginItem, startsWhen: trkey("At login"),

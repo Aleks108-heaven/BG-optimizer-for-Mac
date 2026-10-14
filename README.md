@@ -224,7 +224,7 @@ Design notes and the reasoning behind decisions are in `DESIGN.md`. The QA notes
 ## Status and limits
 
 Tested on an M1 MacBook (16 GB) running macOS 27 with CPU-burner scripts, harmless sleeper processes and the real
-system. Verified there (the 165 automated checks plus manual checks):
+system. Verified there (the 170 automated checks plus manual checks):
 
 - slowing (scheduler priority 31 to 4), release on calm-down, on quit and on SIGTERM, recovery after `kill -9`,
   single instance, protection lists including user-added names;

@@ -177,7 +177,7 @@ enum StorageScanner {
     /// nil means: never offered and never moved (macOS, this app, hidden files, names that say nothing).
     static func classify(name: String, root: Root, ctx: StorageContext) -> Verdict? {
         let lower = name.lowercased()
-        guard !name.isEmpty, !name.hasPrefix("."), !name.contains("/"), !name.unicodeScalars.contains(where: { $0.value < 0x20 || $0.value == 0x7F }) else { return nil }
+        guard !name.isEmpty, !name.hasPrefix("."), !name.contains("/"), plainText(name) == name else { return nil }      // no control or invisible characters: a name must be what it looks like
         if lower.hasPrefix("com.apple.") || lower.contains(".com.apple.") || appleManaged.contains(lower) { return nil }     // also "group.com.apple.x", "243LU875E5.groups.com.apple.x"
         if lower.contains("bgoptimizer") || lower.contains(ctx.ownID.lowercased()) { return nil }          // this app's own files
 

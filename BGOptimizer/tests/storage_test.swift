@@ -56,7 +56,10 @@ make("Containers/com.eset.agent.finderextension")
 make("Group Containers/P8DQRXPVLP.com.eset.dunx")
 make("Group Containers/UBF8T346G9.Office")              // no identifier left after the team prefix
 make("Containers/com.google.Chrome.helper")             // an installed vendor
-make("Caches/weird\nname")                              // a control character in the name
+make("Caches/weird\nname")
+make("Caches/com.evil.\u{202E}gpj.exe")                 // right-to-left override
+make("Caches/com.evil.zero\u{200B}width")                // zero-width space
+make("Caches/com.evil.line\u{2028}break")               // line separator                              // a control character in the name
 try! fm.createSymbolicLink(atPath: lib.appendingPathComponent("Caches/linkedcache").path, withDestinationPath: "/etc")
 try! fm.createSymbolicLink(atPath: lib.appendingPathComponent("Preferences/com.link.leftover.plist").path, withDestinationPath: "/etc/hosts")
 
@@ -86,6 +89,9 @@ for never in ["Caches/com.apple.Safari", "Caches/CloudKit", "Caches/.hidden", "C
     check(item(never) == nil, "scan: never offered: \(never)")
 }
 check(!items.contains { $0.name.contains("\n") }, "scan: a name with a control character is never offered")
+check(!items.contains { plainText($0.name) != $0.name }, "scan: no name with invisible or direction-changing characters is offered")
+check(move(p("Caches/com.evil.\u{202E}gpj.exe")).hasPrefix("refused") && move(p("Caches/com.evil.zero\u{200B}width")).hasPrefix("refused"), "refused: a name with a right-to-left override or a zero-width character")
+check(plainText("a\u{202E}b\u{200B}c\u{2028}d\ne\u{7F}f") == "a b c d e f" && plainText("Zoom Привіт") == "Zoom Привіт", "plainText: hides nothing readable, replaces only the invisible and control characters")
 check(zip(items, items.dropFirst()).allSatisfy { $0.sortBytes >= $1.sortBytes }, "scan: sorted biggest first")
 check(items.allSatisfy { $0.lock == nil }, "scan: nothing is running, so nothing is locked")
 

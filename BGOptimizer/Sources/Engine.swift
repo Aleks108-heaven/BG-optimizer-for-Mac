@@ -313,7 +313,7 @@ final class Engine {
         for (pid, s) in own {
             let p = pct[pid] ?? 0
             let path = ProcTable.path(pid)
-            let name = path.isEmpty ? tr("pid %d", Int(pid)) : (path as NSString).lastPathComponent
+            let name = path.isEmpty ? tr("pid %d", Int(pid)) : plainText((path as NSString).lastPathComponent)
             let (verdict, reason) = classify(path)
             let userEntry = extraProtected.isEmpty ? nil : Policy.matchedUserEntry(path: path, extra: extraProtected)
             let front = inFront(pid)
