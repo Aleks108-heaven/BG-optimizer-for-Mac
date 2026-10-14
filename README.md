@@ -9,11 +9,27 @@ threshold for a minute), when you pick "Give everything back now", when you swit
 
 Written in Swift (SwiftUI and AppKit) with no third-party code. English and Ukrainian interface.
 
+## Quick start
+
+1. Open the [latest release](https://github.com/Aleks108-heaven/BG-optimizer-for-Mac/releases/latest) and download
+   `BG-Optimizer-<version>-arm64.dmg` (Apple Silicon Mac, macOS 13 or newer).
+2. Open the `.dmg` and drag *BG Optimizer* onto *Applications*.
+3. macOS will refuse the first launch, because the app is not notarized by Apple. Run this once in Terminal, then open
+   the app:
+
+       xattr -dr com.apple.quarantine "/Applications/BG Optimizer.app"
+       open "/Applications/BG Optimizer.app"
+
+   Or try to open it, then use System Settings > Privacy & Security > **Open Anyway**.
+4. Follow the welcome screen. The app starts switched off; *Observe only* is the safe way to begin.
+
+Details, the checksum check and building it yourself are under [Install](#install).
+
 ## Install
 
 **Requirements:** an Apple Silicon Mac (M1 or newer; the app is arm64 only, there is no Intel build) and macOS 13 or
-newer. It is built for macOS 13+, but it has been run only on macOS 27 on an M1 MacBook. The first build on GitHub's
-macOS 14 runner is the first test on another macOS.
+newer. It is built for macOS 13+, but it has been run only on macOS 27 on an M1 MacBook. The GitHub workflow also builds it and
+runs the automated tests on a macOS 14 runner.
 
 ### Option 1: download the installer (built by GitHub)
 
@@ -47,8 +63,8 @@ An app you build yourself is not quarantined, so macOS does not warn. You need o
 full Xcode:
 
     xcode-select --install                      # once
-    git clone https://github.com/<owner>/<repo>.git
-    cd <repo>/BGOptimizer
+    git clone https://github.com/Aleks108-heaven/BG-optimizer-for-Mac.git
+    cd BG-optimizer-for-Mac/BGOptimizer
     ./build.sh --install                        # builds and copies the app to ~/Applications/BG Optimizer.app
     ./build.sh --dmg                            # also builds dist/BG-Optimizer-<version>-arm64.dmg
 
@@ -208,8 +224,8 @@ Not tested by hand: the final right-aligned placement of the row menu (an earlie
 the Language picker clicked in the real app, the welcome window's Get started button, the panel's Restore button in
 the real app (only the engine call behind it), turning Launch at login on from this version, release when a slowed
 app is brought to the foreground, a Mac without a battery (the battery tile is hidden there), any chip other than the
-M1, any macOS other than 27, and the GitHub workflow itself (it has been checked as valid YAML and its steps were run
-by hand, but it has not run on GitHub yet).
+M1, any macOS other than 27, and a second Mac (the GitHub workflow builds and tests the app on macOS 14, but nobody has yet opened the
+downloaded installer by hand on another Mac).
 
 The Ukrainian text was written with AI assistance and has had only partial review by a native speaker; corrections are
 welcome (edit `uk.lproj/App.strings` and run the translation checker).
