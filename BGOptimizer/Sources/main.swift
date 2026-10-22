@@ -427,9 +427,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         NSApp.activate(ignoringOtherApps: true)
     }
 
-    private func updateDockPresence() {
-        let open = [window, activityWindow, firstRunWindow].contains { $0.map { $0.isVisible || $0.isMiniaturized } ?? false }
-        if !open, NSApp.activationPolicy() != .accessory { NSApp.setActivationPolicy(.accessory) }
+    /// `closing` is a window that is on its way out: it still reports itself visible for a moment (more so on a slow or virtual
+    /// display), and must not keep the Dock icon alive. If macOS refuses the switch for now, it is tried again shortly.
+    private func updateDockPresence(closing: NSWindow? = nil, attempt: Int = 0) {
+        let open = [window, activityWindow, firstRunWindow].contains { w in
+            guard let w = w, w !== closing else { return false }
+            return w.isVisible || w.isMiniaturized
+        }
+        let raw = [window, activityWindow, firstRunWindow].contains { $0.map { $0.isVisible || $0.isMiniaturized } ?? false }
+        let desc = [("settings", window), ("activity", activityWindow), ("welcome", firstRunWindow)].map { n, w in "\(n)=\(w.map { "vis:\($0.isVisible) mini:\($0.isMiniaturized)" } ?? "nil")" }.joined(separator: " ")
+        log.write("DOCKDBG", "attempt=\(attempt) openRaw=\(raw) openExcludingClosing=\(open) \(desc) policy=\(NSApp.activationPolicy().rawValue) active=\(NSApp.isActive)")
+        guard !open, NSApp.activationPolicy() != .accessory else { return }
+        let ok = NSApp.setActivationPolicy(.accessory)
+        log.write("DOCKDBG", "setActivationPolicy(.accessory) -> \(ok), policy now \(NSApp.activationPolicy().rawValue)")
+        if !ok, attempt < 4 {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { self.updateDockPresence(closing: closing, attempt: attempt + 1) }
+        }
     }
 
     /// The Activity window only works (samples, rows, timers) while it can be seen.
@@ -459,7 +472,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         } else if w === firstRunWindow {
             UserDefaults.standard.set(true, forKey: "didOnboard")
         }
-        DispatchQueue.main.async { self.updateDockPresence() }
+        DispatchQueue.main.async { self.updateDockPresence(closing: w) }
     }
 
     /// A real main menu. Without one, ⌘C ⌘V ⌘A do not work in the text fields, and ⌘W ⌘M ⌘Q do nothing.
