@@ -36,6 +36,7 @@ grep -E "SELFTEST Storage tab loaded" "$LOG" | grep -oE "storageItems=[0-9]+" | 
 grep -E "SELFTEST Drivers tab loaded" "$LOG" | grep -oE "driverItems=[0-9]+" | sed 's/^/  info /'
 grep -E "SELFTEST Fans tab loaded" "$LOG" | grep -oE "thermal(Sensors|Fans)=-?[0-9]+" | sed 's/^/  info /'
 grep -E "SELFTEST Battery tab loaded" "$LOG" | grep -oE "power(LogRead|Sessions)=[a-z0-9-]+" | sed 's/^/  info /'
+grep -E "DOCKDBG" "$LOG" | cut -c1-300 | sed 's/^/  dock /'
 [ $FAIL -eq 0 ]
 
 }

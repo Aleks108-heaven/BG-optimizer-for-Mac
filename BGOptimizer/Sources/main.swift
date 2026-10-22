@@ -434,8 +434,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             guard let w = w, w !== closing else { return false }
             return w.isVisible || w.isMiniaturized
         }
+        let raw = [window, activityWindow, firstRunWindow].contains { $0.map { $0.isVisible || $0.isMiniaturized } ?? false }
+        let desc = [("settings", window), ("activity", activityWindow), ("welcome", firstRunWindow)].map { n, w in "\(n)=\(w.map { "vis:\($0.isVisible) mini:\($0.isMiniaturized)" } ?? "nil")" }.joined(separator: " ")
+        log.write("DOCKDBG", "attempt=\(attempt) openRaw=\(raw) openExcludingClosing=\(open) \(desc) policy=\(NSApp.activationPolicy().rawValue) active=\(NSApp.isActive)")
         guard !open, NSApp.activationPolicy() != .accessory else { return }
-        if !NSApp.setActivationPolicy(.accessory), attempt < 4 {
+        let ok = NSApp.setActivationPolicy(.accessory)
+        log.write("DOCKDBG", "setActivationPolicy(.accessory) -> \(ok), policy now \(NSApp.activationPolicy().rawValue)")
+        if !ok, attempt < 4 {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { self.updateDockPresence(closing: closing, attempt: attempt + 1) }
         }
     }
