@@ -301,3 +301,42 @@
 "Observe only: you can look, but not move anything. Turn it off in Settings to move items to the Trash." = "Лише спостереження: можна дивитися, але не переміщувати. Вимкніть його в Налаштуваннях, щоб переміщувати елементи до Кошика.";
 "Moved “%@” to the Trash." = "«%@» переміщено до Кошика.";
 "Could not move “%@”: %@" = "Не вдалося перемістити «%1$@»: %2$@";
+
+/* Drivers tab */
+"Drivers" = "Драйвери";
+"Reading drivers (a few seconds)…" = "Читаю драйвери (кілька секунд)…";
+"No third-party drivers found." = "Сторонніх драйверів не знайдено.";
+"No driver matches that name." = "Жоден драйвер не відповідає цій назві.";
+"Drivers: %d. Nothing is changed here." = "Драйверів: %d. Тут нічого не змінюється.";
+"Read only: this app does not remove drivers, because removing one needs an administrator and can break the software that uses it. “Probably not in use” means it is switched off and no app from the same maker is installed. Only the maker can say whether a driver is out of date, so compare the version with the maker's website. To remove one, use the maker's uninstaller; System Settings can switch an extension off. Kernel extensions are the old kind of driver, and Apple silicon Macs load them only with reduced security." = "Лише перегляд: ця програма не видаляє драйвери, бо для цього потрібні права адміністратора, а видалення може зламати програму, яка їх використовує. «Ймовірно не використовується» означає, що драйвер вимкнено і жодної програми від того самого виробника не встановлено. Чи застарів драйвер, може сказати лише виробник, тож порівняйте версію з сайтом виробника. Щоб видалити драйвер, скористайтеся програмою видалення від виробника; Системні параметри можуть лише вимкнути розширення. Розширення ядра — старий тип драйверів; Mac на Apple silicon завантажують їх лише зі зниженим рівнем безпеки.";
+"macOS did not list the system extensions (the read failed or timed out), so some drivers may be missing here." = "macOS не показала системні розширення (читання не вдалося або тривало надто довго), тож деяких драйверів тут може бракувати.";
+"System extension" = "Системне розширення";
+"Kernel extension" = "Розширення ядра";
+"Helper tool" = "Допоміжна програма";
+"Probably not in use" = "Ймовірно не використовується";
+"Maker's app not found" = "Програму виробника не знайдено";
+"Switched off" = "Вимкнено";
+"Waiting" = "Очікує";
+"Old type" = "Старий тип";
+"Enabled" = "Увімкнено";
+"Installed" = "Встановлено";
+"Version or date" = "Версія або дата";
+"Off, and no “%@” app is installed." = "Вимкнено, і програми від «%@» не встановлено.";
+"No “%@” app is installed." = "Програми від «%@» не встановлено.";
+"Off. A “%@” app is installed." = "Вимкнено. Програма від «%@» встановлена.";
+"Waiting for your approval in System Settings." = "Очікує вашого дозволу в Системних параметрах.";
+"Will be removed at the next restart." = "Буде видалено під час наступного перезапуску.";
+"A kernel extension: the old kind of driver." = "Розширення ядра: старий тип драйвера.";
+"On. A “%@” app is installed." = "Увімкнено. Програма від «%@» встановлена.";
+"From “%@”. macOS does not show if it is used." = "Від «%@». macOS не показує, чи його використовують.";
+"macOS did not say whether it is on." = "macOS не повідомила, чи його ввімкнено.";
+"macOS does not say who installed it." = "macOS не повідомляє, хто його встановив.";
+
+/* Collapsible explanations, status strip */
+"Switch your own login items off or on here. Nothing that is running gets stopped." = "Тут можна вимкнути або ввімкнути власні елементи автозапуску. Те, що вже працює, не зупиняється.";
+"Read only: drivers are listed here, never removed by this app." = "Лише перегляд: драйвери тут показано, але ця програма їх не видаляє.";
+"Nothing is deleted automatically: you choose each item, and the Trash can undo it." = "Нічого не видаляється автоматично: ви самі обираєте кожен елемент, а Кошик дозволяє скасувати дію.";
+"More" = "Докладніше";
+"Less" = "Згорнути";
+"Show details" = "Показати подробиці";
+"Hide details" = "Сховати подробиці";

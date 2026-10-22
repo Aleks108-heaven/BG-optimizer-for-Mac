@@ -48,7 +48,7 @@ enum Policy {
         if matches(comps, extra) { return (.never, trkey("On your protected list")) }
         if matches(comps, aiHosts) { return (.never, trkey("Local AI host")) }
         if matches(comps, systemNames) { return (.never, trkey("System or this app")) }
-        if securityTools.contains(where: { lower.contains($0) }) { return (.never, trkey("Security tool")) }
+        if looksLikeSecurityTool(lower) { return (.never, trkey("Security tool")) }
         if systemPrefixes.contains(where: { path.hasPrefix($0) }) {
             return systemWorkersOK.contains(comps.last ?? "") ? (.ok, "") : (.never, trkey("System process"))
         }
@@ -57,10 +57,27 @@ enum Policy {
         return (.ok, "")
     }
 
+    /// Does a known name start a word in this lower-case text: at the very start, or right after anything that is not a letter or a digit
+    /// ("/", ".", "-", "_", a space)? A plain substring test also found "eset" inside "updat-eSet-tings", "pr-eset" and "r-eset",
+    /// so ordinary programs were taken for security tools.
+    private static func startsWord(_ text: String, _ name: String) -> Bool {
+        var from = text.startIndex
+        while let r = text.range(of: name, range: from..<text.endIndex) {
+            if r.lowerBound == text.startIndex { return true }
+            let before = text[text.index(before: r.lowerBound)]
+            if !before.isLetter && !before.isNumber { return true }
+            from = text.index(after: r.lowerBound)
+        }
+        return false
+    }
+
+    private static func looksLikeSecurityTool(_ lower: String) -> Bool {
+        securityTools.contains { startsWord(lower, $0) }
+    }
+
     /// Is this text (a label, a path, a name) a known security tool? Used to keep them out of every kind of change.
     static func isSecurityTool(_ text: String) -> Bool {
-        let lower = text.lowercased()
-        return securityTools.contains { lower.contains($0) }
+        looksLikeSecurityTool(text.lowercased())
     }
 
     /// The name "Never slow this app" adds to your list: the outermost app in the path ("Google Chrome" for all its helpers),

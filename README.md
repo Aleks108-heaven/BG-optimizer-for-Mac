@@ -115,7 +115,7 @@ is written to the log as `LOGIN`. Command line: `BGOptimizer --login on|off|stat
   and GB in use), thermal state (whether macOS is throttling the chip), battery (charge, time left or to full, Low
   Power Mode, and health: condition, maximum capacity, cycle count) and free storage. A tile shows a warning symbol and
   wording, not just a color, when something needs attention. Battery health is read from the same source as System
-  Information. Free storage counts space macOS can reclaim, like Finder does, so it is a little higher than `df`.
+  Information. Free storage counts space macOS can reclaim, like Finder does, so it is a little higher than `df`. In a tall window on the Processes tab the tiles are shown in full; in a small window and on the other tabs they become a one-line strip with the same readings and warning symbols (details in the tooltip), so the table keeps its room. Each tab's explanation is one line; **More** opens the full text.
 - *Processes*: all of the user's own processes (not system or other users'), busiest first, with CPU use, **Memory** (the
   figure Activity Monitor shows, read only; click the header to see which use the most) and a status
   chip: Slowed, Watching, Would slow (observe only), Skipped (browsers, calls, media, editors, the app in front: never
@@ -143,6 +143,16 @@ is written to the log as `LOGIN`. Command line: `BGOptimizer --login on|off|stat
   apps show their state and a **Settings…** button that opens System Settings, because changing them needs an
   administrator. Security tools, macOS items and this app are locked. The list takes a few seconds to read and is read
   only when the tab is opened or Refresh is pressed.
+- *Drivers*: what macOS keeps for third-party hardware and security software: system extensions (`systemextensionsctl
+  list`), old kernel extensions in `/Library/Extensions`, and the root helper tools in `/Library/PrivilegedHelperTools`.
+  Each row has a status: **Probably not in use** (switched off, and no app from the same maker is installed), **Maker's
+  app not found**, Switched off, Waiting (for your approval, or to be removed at the next restart), Old type (a kernel
+  extension), Enabled or Installed. **It only reads.** Removing a driver needs an administrator (and
+  `systemextensionsctl uninstall` needs SIP switched off), so the app shows what it found and leaves the removal to the
+  maker's uninstaller. It does not decide that a driver is *out of date*: that needs the maker's list of versions, and
+  this app never uses the network, so it shows the version or the date for you to compare. Apple's own items are never
+  listed. "Maker's app not found" can be wrong for an app kept in an unusual place; "Enabled" is only a guess about
+  *use* for a helper tool, because macOS does not say whether one is used.
 - *Storage*: what is taking space in **your own Library**: app caches, app logs, Xcode build files, and **possible
   leftovers** of apps you removed (settings, containers and caches whose maker has no app installed or running; for
   example what ESET or Malwarebytes leave behind). It is read only until you act: each row has **Reveal in Finder** and
@@ -197,12 +207,13 @@ See `SECURITY-REVIEW.md` for the attack surface, findings and performance measur
 
 Checks the translations, the log (private permissions, one line per entry, clear), the row menu, the Storage rules (what is
 offered, what is never offered, every refusal for Move to Trash, in a stand-in home folder), startup items
-(parsing, the rules for changing, a real read), the rules for changing jobs by hand (with harmless sleeper processes;
+(parsing, the rules for changing, a real read), the security-tool name rule (a name must start a word), the Drivers tab
+(reading `systemextensionsctl list`, the decision for every kind of row, stand-in folders, a real read), the rules for changing jobs by hand (with harmless sleeper processes;
 a system process of the current user is used only to confirm it is refused), and a start-up test of the finished app
 (windows, Dock icon, minimize and restore). About a minute. On a machine without a Finder, a per-user launchd domain or
 a window server, the parts that need them are skipped with a message. Every section has a time limit, and on GitHub
 Actions each section's result is also copied into an annotation on the run page. Outside programs the app runs
-(`launchctl`, `sfltool`, `system_profiler`) are stopped after a time limit instead of being waited for forever.
+(`launchctl`, `sfltool`, `system_profiler`, `systemextensionsctl`) are stopped after a time limit instead of being waited for forever.
 
 ## Development
 
@@ -224,7 +235,7 @@ Design notes and the reasoning behind decisions are in `DESIGN.md`. The QA notes
 ## Status and limits
 
 Tested on an M1 MacBook (16 GB) running macOS 27 with CPU-burner scripts, harmless sleeper processes and the real
-system. Verified there (the 170 automated checks plus manual checks):
+system. Verified there (the 247 automated checks plus manual checks):
 
 - slowing (scheduler priority 31 to 4), release on calm-down, on quit and on SIGTERM, recovery after `kill -9`,
   single instance, protection lists including user-added names;
@@ -244,7 +255,8 @@ system. Verified there (the 170 automated checks plus manual checks):
 - the menu-bar panel's accent-colored switch and a popup menu opening at the mouse were confirmed in the running app
   by a user.
 
-Not tested by hand: the Storage tab clicked in the real app (Reveal in Finder, the confirmation, Move to Trash; the rules behind
+Not tested by hand: the Drivers tab clicked in the real app (sorting, the filter, Open Login Items settings), reading kernel
+extensions from a real `/Library/Extensions` (the development Mac has none; the logic is tested on stand-in folders), the Storage tab clicked in the real app (Reveal in Finder, the confirmation, Move to Trash; the rules behind
 them are tested), moving another app's container to the Trash (macOS may ask or refuse), the final right-aligned placement of the row menu (an earlier placement was confirmed), the confirmation dialog and the banner in the real window, column sorting, Hide idle processes,
 the Language picker clicked in the real app, the welcome window's Get started button, the panel's Restore button in
 the real app (only the engine call behind it), turning Launch at login on from this version, release when a slowed

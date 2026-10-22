@@ -394,7 +394,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             let w = activityWindow
             let policy = NSApp.activationPolicy() == .regular ? "regular (Dock icon)" : "accessory (menu bar only)"
             log.write("SELFTEST", "\(label): \(policy), minimized=\(w?.isMiniaturized ?? false), visible=\(w?.isVisible ?? false), "
-                      + "refreshTimer=\(activity.isRefreshing), engineBuildsRows=\(engine.activityEnabled), startupItems=\(activity.startup.count), storageItems=\(activity.storage.count), mainMenuTitles=\(NSApp.mainMenu?.items.map { $0.title } ?? [])")
+                      + "refreshTimer=\(activity.isRefreshing), engineBuildsRows=\(engine.activityEnabled), startupItems=\(activity.startup.count), storageItems=\(activity.storage.count), driverItems=\(activity.drivers.count), mainMenuTitles=\(NSApp.mainMenu?.items.map { $0.title } ?? [])")
         }
         func at(_ t: Double, _ f: @escaping () -> Void) { DispatchQueue.main.asyncAfter(deadline: .now() + t, execute: f) }
         at(0.5) { state("start (nothing open)") }
@@ -403,13 +403,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         at(5.5) { state("Startup tab loaded") }
         at(5.6) { self.activity.select(.storage) }                   // reads your Library (read only)
         at(10.0) { state("Storage tab loaded") }
-        at(10.1) { self.activityWindow?.miniaturize(nil) }
-        at(12.5) { state("window minimized") }
-        at(12.6) { self.activityWindow?.deminiaturize(nil) }
-        at(15.0) { state("window restored") }
-        at(15.1) { self.activityWindow?.close() }
-        at(16.5) { state("window closed") }
-        at(17.0) { NSApp.terminate(nil) }
+        at(10.1) { self.activity.select(.drivers) }                  // lists system extensions and helper tools (read only)
+        at(13.0) { state("Drivers tab loaded") }
+        at(13.1) { self.activityWindow?.miniaturize(nil) }
+        at(15.5) { state("window minimized") }
+        at(15.6) { self.activityWindow?.deminiaturize(nil) }
+        at(18.0) { state("window restored") }
+        at(18.1) { self.activityWindow?.close() }
+        at(19.5) { state("window closed") }
+        at(20.0) { NSApp.terminate(nil) }
     }
 
     // MARK: Dock icon, menu bar and window lifecycle
@@ -645,6 +647,26 @@ func snapshotActivityAndWelcome(prefix: String) -> Never {
         store("com.swiftlydetecting.agent.plist", "Preferences", .leftover, 0.004, StorageScanner.noteLeftover, "swiftlydetecting"),
     ]
     render(ActivityView(model: ActivityModel(rows: rows, system: status, engineOn: true, tab: .storage, storage: storage), actions: noActions), size: size, appearance: .aqua, to: "\(prefix)-activity-storage.png")
+    func drv(_ name: String, _ id: String, _ kind: DriverKind, _ info: String?, _ status: DriverStatus, _ detail: String, _ arg: String? = nil) -> DriverItem {
+        DriverItem(name: name, identifier: id, kind: kind, info: info, status: status, detail: detail, detailArg: arg)
+    }
+    let drivers = [
+        drv("Malwarebytes Engine", "com.malwarebytes.mbam.engine.sys.ext", .systemExtension, "5.26.1", .probablyUnused, DriverScanner.detailProbablyUnused, "malwarebytes"),
+        drv("Mac Monitor Security Extension", "com.swiftlydetecting.agent.securityextension", .systemExtension, "2.1.0", .probablyUnused, DriverScanner.detailProbablyUnused, "swiftlydetecting"),
+        drv("Acme Audio Driver", "com.acme.audio", .kernelExtension, "3.0", .legacy, DriverScanner.detailLegacy),
+        drv("com.acme.updater.helper", "com.acme.updater.helper", .helperTool, "2024-12-04", .makerAppMissing, DriverScanner.detailMakerMissing, "acme"),
+        drv("Karabiner VirtualHID", "org.pqrs.Karabiner-DriverKit-VirtualHIDDevice", .systemExtension, "1.0.0", .pending, DriverScanner.detailWaiting),
+        drv("ProtonVPN WireGuard", "ch.protonvpn.mac.WireGuard-Extension", .systemExtension, "5.1.0", .enabled, DriverScanner.detailEnabled, "protonvpn"),
+        drv("com.adobe.ARMDC.Communicator", "com.adobe.ARMDC.Communicator", .helperTool, "2024-12-04", .installed, DriverScanner.detailInstalled, "adobe"),
+    ]
+    render(ActivityView(model: ActivityModel(rows: rows, system: status, engineOn: true, tab: .drivers, drivers: drivers), actions: noActions), size: size, appearance: .aqua, to: "\(prefix)-activity-drivers.png")
+    render(ActivityView(model: ActivityModel(rows: rows, system: status, engineOn: true, tab: .drivers, drivers: drivers), actions: noActions), size: size, appearance: .darkAqua, to: "\(prefix)-activity-drivers-dark.png")
+    let expanded = ActivityModel(rows: rows, system: status, engineOn: true, tab: .drivers, drivers: drivers)
+    expanded.openBanners = [.drivers]                // the explanation opened with "More"
+    render(ActivityView(model: expanded, actions: noActions), size: size, appearance: .aqua, to: "\(prefix)-activity-drivers-expanded.png")
+    let small = NSSize(width: 600, height: 440)      // about the smallest size the window can be made: the table must still have room
+    render(ActivityView(model: ActivityModel(rows: rows, system: status, engineOn: true), actions: noActions), size: small, appearance: .aqua, to: "\(prefix)-activity-small.png")
+    render(ActivityView(model: ActivityModel(rows: rows, system: status, engineOn: true, tab: .drivers, drivers: drivers), actions: noActions), size: small, appearance: .aqua, to: "\(prefix)-activity-drivers-small.png")
     render(ActivityView(model: ActivityModel(rows: rows, system: status, engineOn: true, tab: .log, log: log), actions: noActions), size: size, appearance: .aqua, to: "\(prefix)-activity-log.png")
     render(SettingsView(model: AppModel(previewEnabled: true), actions: SettingsActions(setLogin: { _ in }, giveBack: {})),
            size: NSSize(width: 520, height: 560), appearance: .aqua, to: "\(prefix)-settings-light.png")

@@ -243,3 +243,48 @@ moment (their bundle identifiers and path names). It is a best-effort guard; the
 **Not built, on purpose:** automatic or scheduled cleaning; permanent delete; anything in `/Library`; removing system
 extensions (needs SIP off, or the vendor's uninstaller); guessing leftovers from plain folder names; Full Disk Access.
 **Not verified:** the buttons clicked in the real window; moving another app's container (macOS 14+ protects those).
+
+## 17. Drivers
+
+**The question.** "Can drivers that are outdated and no longer used be found, and removed?" On an Apple silicon Mac a driver is
+mostly a *system extension*; the old *kernel extensions* are rare, and apps leave *root helper tools* behind. Found, yes.
+Removed, not by this app.
+
+**Design.** A Drivers tab, read only: system extensions (`systemextensionsctl list`), kernel extensions in `/Library/Extensions`
+and root helpers in `/Library/PrivilegedHelperTools`. Each row has a status: *Probably not in use* (switched off, and no app from
+the same maker is installed), *Maker's app not found*, *Switched off*, *Waiting*, *Old type* (kernel extension), *Enabled*,
+*Installed*. Most interesting first. The maker rule is the Storage tab's: a maker with any installed app is never reported as gone,
+which errs toward showing less. A name that says nothing about a maker is never flagged. Apple's own items are never listed.
+
+**"Outdated" is not decided.** That needs the maker's list of current versions, and this app never uses the network. It shows the
+version, or for a helper tool the day it was installed, and says in the tab that only the maker can tell.
+
+**Old is not unused.** On the development Mac the two Adobe helpers date from Dec 2024 and look like leftovers, but their client
+(Adobe Acrobat Updater) is installed and they are in use. Age alone flags nothing.
+
+**Why not remove them.** It needs an administrator, so the app would need a privileged helper, which is the weakness the tab looks
+for. `systemextensionsctl uninstall` needs SIP off. A wrong guess can break security software. The tab names the maker's uninstaller
+and leaves the decision to you.
+
+**Not built, on purpose:** any removal; a network lookup of versions; guessing a maker from a plain name.
+**Not verified:** the tab clicked in the real window; reading a real kernel extension (the development Mac has none; stand-in folders
+are tested); how `systemextensionsctl gc` behaves with SIP on.
+
+## 18. Small windows: the table keeps its room
+
+**What was wrong.** The window can be made about 600 x 440. There, the five status tiles took about 250 of its 440 points, and on
+the Startup, Drivers and Storage tabs a long explanation took more: the Drivers tab showed no table row at all, and the Processes
+tab about two and a half. The toolbar also overflowed both edges. Seen in snapshots (`--snapshot-windows`, which now also draws the
+small size), not guessed.
+
+**Changes.** (1) The tiles stay only on the Processes tab when the window is tall (600 points or more); otherwise one line, or two
+in a narrow window, with the same readings, the same warning symbols and the battery's time left; the longer wording is in the
+tooltip. (2) Each tab's explanation is one line with **More**; the full text replaces the line instead of repeating it. (3) The tab
+picker has its natural width and lines up with the content; the filter and the Hide idle switch move to a second line when there is
+no room. (4) In Drivers the status column follows the name, so the verdict is seen even when the table scrolls sideways, and the
+detail texts are short enough to show the maker.
+
+**Result at 600 x 440** (sample data: 7 drivers, 9 processes): Drivers 0 to 6 of 7 rows visible, Processes about 2.5 rows to all 9 with room left, no clipped toolbar, in English and Ukrainian.
+**Not checked:** VoiceOver and Full Keyboard Access on the new strip and the More button (labels are set, not heard); contrast was
+not measured, the colours are the existing ones.
+

@@ -18,7 +18,7 @@ struct ActivityActions {
 
 /// State of the Activity window. The engine feeds `rows`; the Mac's own status is read here every 5 seconds while the window is open.
 final class ActivityModel: ObservableObject {
-    enum Tab: Int { case processes, startup, storage, log }
+    enum Tab: Int { case processes, startup, storage, log, drivers }
 
     @Published var tab: Tab = .processes
     @Published var rows: [ActivityRow] = []
@@ -38,6 +38,11 @@ final class ActivityModel: ObservableObject {
     @Published var startup: [StartupItem] = []
     @Published var startupLoading = false
     @Published var startupSort = [KeyPathComparator(\StartupItem.kindRank), KeyPathComparator(\StartupItem.name)]
+    @Published var drivers: [DriverItem] = []
+    @Published var driversLoading = false
+    @Published var driversReadFailed = false    // macOS did not list the system extensions, so the list may be incomplete
+    @Published var driversSort = [KeyPathComparator(\DriverItem.statusRank), KeyPathComparator(\DriverItem.name)]
+    @Published var openBanners: Set<Tab> = []   // tabs whose explanation is expanded (it starts as one line)
     @Published var storage: [StorageItem] = []
     @Published var storageLoading = false
     @Published var storageSort = [KeyPathComparator(\StorageItem.sortBytes, order: .reverse)]
@@ -57,9 +62,10 @@ final class ActivityModel: ObservableObject {
 
     /// For snapshots only.
     init(rows: [ActivityRow], system: SystemStatus, engineOn: Bool, tab: Tab = .processes, log: String = "", startup: [StartupItem] = [],
-         storage: [StorageItem] = []) {
+         storage: [StorageItem] = [], drivers: [DriverItem] = []) {
         self.startup = startup
         self.storage = storage
+        self.drivers = drivers
         self.rows = rows
         self.ownCount = 312
         self.updated = Date()
@@ -109,11 +115,41 @@ final class ActivityModel: ObservableObject {
         if tab == .log { logText = logProvider() }
     }
 
+    func toggleBanner(_ t: Tab) {
+        if openBanners.contains(t) { openBanners.remove(t) } else { openBanners.insert(t) }
+    }
+
     func select(_ t: Tab) {
         tab = t
         if t == .log { logText = logProvider() }
         if t == .startup { refreshStartup() }
         if t == .storage { refreshStorage() }
+        if t == .drivers { refreshDrivers() }
+    }
+
+    private let driversQueue = DispatchQueue(label: "bgopt.drivers")
+    private var driversToken = UUID()
+
+    /// Reading the drivers takes a second or two (systemextensionsctl), so it runs in the background and only when the tab is opened or Refresh is pressed.
+    func refreshDrivers() {
+        let token = UUID()
+        driversToken = token
+        driversLoading = true
+        driversQueue.async {
+            let read = DriverScanner.read()
+            DispatchQueue.main.async {
+                guard self.driversToken == token else { return }        // a newer read is on its way
+                self.drivers = read.items
+                self.driversReadFailed = !read.extensionsRead
+                self.driversLoading = false
+            }
+        }
+    }
+
+    var filteredDrivers: [DriverItem] {
+        let q = query.trimmingCharacters(in: .whitespaces).lowercased()
+        let list = q.isEmpty ? drivers : drivers.filter { $0.name.lowercased().contains(q) || $0.identifier.lowercased().contains(q) }
+        return list.sorted(using: driversSort)
     }
 
     private let startupQueue = DispatchQueue(label: "bgopt.startup")
@@ -202,7 +238,7 @@ private struct Tile: View {
     var level: Level = .ok
     var wide = false                // caption and extra side by side (used for the battery)
 
-    private var glyph: (String, Color) {
+    fileprivate var glyph: (String, Color) {
         switch level {
         case .ok: return ("checkmark.circle", .calmInk)
         case .attention: return ("exclamationmark.triangle", .slowInk)
@@ -255,6 +291,47 @@ private struct Tile: View {
     }
 }
 
+/// An explanation that takes one line until you ask for more: it teaches a tab once, and must not keep taking the table's room.
+private struct InfoBanner<Trailing: View>: View {
+    let summary: String
+    let details: String
+    let open: Bool
+    let toggle: () -> Void
+    @ViewBuilder let trailing: () -> Trailing
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Label(open ? details : summary, systemImage: "info.circle")       // the full text replaces the summary, so nothing is said twice
+                .font(.callout).foregroundStyle(Color.neuInk).fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+            Button(open ? tr("Less") : tr("More"), action: toggle)
+                .buttonStyle(.link)
+                .accessibilityLabel(open ? tr("Hide details") : tr("Show details"))
+            trailing()
+        }
+        .padding(10)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Color.neuBg))
+        .padding(.horizontal, 16).padding(.bottom, 8)
+    }
+}
+
+/// One reading of the status strip: a symbol (so the state is not only a colour), the name, the value; the details in the tooltip.
+private struct StatusPill: View {
+    let tile: Tile
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Image(systemName: tile.glyph.0).foregroundStyle(tile.glyph.1).accessibilityHidden(true)
+            (Text(tile.title).foregroundColor(.secondary) + Text(" " + tile.value).bold())
+        }
+        .font(.caption)
+        .lineLimit(1)
+        .fixedSize()
+        .help([tile.caption, tile.extra].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " "))
+        .accessibilityElement(children: .combine)
+    }
+}
+
 private func duration(_ minutes: Int) -> String {
     minutes >= 60 ? tr("%d h %d min", minutes / 60, minutes % 60) : tr("%d min", minutes)
 }
@@ -278,16 +355,23 @@ struct ActivityView: View {
     @ObservedObject var model: ActivityModel
     let actions: ActivityActions
 
+    /// Below this height the big tiles would leave the table almost no room (the window can be made about 600 x 440).
+    private static let roomyHeight: CGFloat = 600
+
     var body: some View {
-        VStack(spacing: 0) {
-            tiles.padding(.horizontal, 16).padding(.top, 14)
-            toolbar.padding(.horizontal, 16).padding(.vertical, 10)
-            if let text = model.notice { noticeBar(text) }
-            switch model.tab {
-            case .processes: processes
-            case .startup: startupView
-            case .storage: storageView
-            case .log: logView
+        GeometryReader { geo in
+            VStack(spacing: 0) {
+                if model.tab == .processes && geo.size.height >= Self.roomyHeight { tiles.padding(.horizontal, 16).padding(.top, 14) }
+                else { statusStrip.padding(.horizontal, 16).padding(.top, 12) }
+                toolbar.padding(.horizontal, 16).padding(.vertical, 10)
+                if let text = model.notice { noticeBar(text) }
+                switch model.tab {
+                case .processes: processes
+                case .startup: startupView
+                case .drivers: driversView
+                case .storage: storageView
+                case .log: logView
+                }
             }
         }
         .frame(minWidth: 560, minHeight: 420)
@@ -351,7 +435,11 @@ struct ActivityView: View {
 
     /// CPU, memory, thermal, storage: all four, or `first` of them after skipping `skip`.
     @ViewBuilder private func smallTiles(_ s: SystemStatus, first: Int = 4, skip: Int = 0) -> some View {
-        let all: [Tile] = [
+        ForEach(Array(fourTiles(s).dropFirst(skip).prefix(first).enumerated()), id: \.offset) { _, tile in tile }
+    }
+
+    private func fourTiles(_ s: SystemStatus) -> [Tile] {
+        [
             Tile(title: tr("CPU load"), value: String(format: "%.0f%%", s.cpuLoad), caption: tr("across %d cores", s.cores),
                  level: s.cpuLoad >= 90 ? .attention : .ok),
             Tile(title: tr("Memory"), value: tr(s.pressure.label), caption: tr("%@ of %@ in use", gb(s.memoryUsedGB), gb(s.memoryTotalGB)),
@@ -361,7 +449,33 @@ struct ActivityView: View {
             Tile(title: tr("Storage"), value: tr("%@ free", gb(s.storageFreeGB)), caption: tr("of %@", gb(s.storageTotalGB)),
                  level: s.storageFreeGB < 20 ? .attention : .ok),
         ]
-        ForEach(Array(all.dropFirst(skip).prefix(first).enumerated()), id: \.offset) { _, tile in tile }
+    }
+
+    /// The same readings in one line (two when the window is narrow), for when the big tiles would push the table out of view.
+    /// The longer wording of each tile is in its tooltip. The battery line adds the time left, which is what you usually want from it.
+    @ViewBuilder private var statusStrip: some View {
+        if let s = model.system {
+            let pills = stripTiles(s)
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 16) { ForEach(Array(pills.enumerated()), id: \.offset) { _, t in StatusPill(tile: t) }; Spacer(minLength: 0) }
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 16) { ForEach(Array(pills.prefix(3).enumerated()), id: \.offset) { _, t in StatusPill(tile: t) }; Spacer(minLength: 0) }
+                    HStack(spacing: 16) { ForEach(Array(pills.dropFirst(3).enumerated()), id: \.offset) { _, t in StatusPill(tile: t) }; Spacer(minLength: 0) }
+                }
+            }
+        } else {
+            Text(tr("Reading this Mac's status…")).font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private func stripTiles(_ s: SystemStatus) -> [Tile] {
+        var list = fourTiles(s)
+        if let b = s.battery {
+            let t = batteryTile(b, s)
+            let left = (!b.onAC && !b.charging) ? b.minutesRemaining.map { " · " + duration($0) } : nil
+            list.append(Tile(title: t.title, value: t.value + (left ?? ""), caption: t.caption, extra: t.extra, level: t.level))
+        }
+        return list
     }
 
     private func thermalTile(_ s: SystemStatus) -> Tile {
@@ -393,24 +507,36 @@ struct ActivityView: View {
 
     // MARK: toolbar
 
+    private var viewPicker: some View {
+        Picker(tr("View"), selection: Binding(get: { model.tab }, set: { model.select($0) })) {
+            Text(tr("Processes")).tag(ActivityModel.Tab.processes)
+            Text(tr("Startup")).tag(ActivityModel.Tab.startup)
+            Text(tr("Drivers")).tag(ActivityModel.Tab.drivers)
+            Text(tr("Storage")).tag(ActivityModel.Tab.storage)
+            Text(tr("Log")).tag(ActivityModel.Tab.log)
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .fixedSize()                    // its natural width, so it lines up with the content below instead of floating in a wider frame
+    }
+
+    /// The hide-idle switch and the filter. They go on a second line when the window is too narrow for everything on one.
+    @ViewBuilder private var viewOptions: some View {
+        if model.tab != .log {
+            if model.tab == .processes { Toggle(tr("Hide idle processes"), isOn: $model.onlyActive).toggleStyle(.checkbox) }
+            TextField(tr("Filter by name"), text: $model.query)
+                .textFieldStyle(.roundedBorder)
+                .frame(minWidth: 110, maxWidth: 200)
+                .accessibilityLabel(tr("Filter by name"))
+        }
+    }
+
     private var toolbar: some View {
-        HStack {
-            Picker(tr("View"), selection: Binding(get: { model.tab }, set: { model.select($0) })) {
-                Text(tr("Processes")).tag(ActivityModel.Tab.processes)
-                Text(tr("Startup")).tag(ActivityModel.Tab.startup)
-                Text(tr("Storage")).tag(ActivityModel.Tab.storage)
-                Text(tr("Log")).tag(ActivityModel.Tab.log)
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .frame(width: 400)
-            Spacer()
-            if model.tab != .log {
-                if model.tab == .processes { Toggle(tr("Hide idle processes"), isOn: $model.onlyActive).toggleStyle(.checkbox) }
-                TextField(tr("Filter by name"), text: $model.query)
-                    .textFieldStyle(.roundedBorder)
-                    .frame(minWidth: 110, maxWidth: 200)
-                    .accessibilityLabel(tr("Filter by name"))
+        ViewThatFits(in: .horizontal) {
+            HStack { viewPicker; Spacer(); viewOptions }
+            VStack(alignment: .leading, spacing: 8) {
+                viewPicker
+                HStack { Spacer(); viewOptions }
             }
         }
     }
@@ -557,16 +683,11 @@ struct ActivityView: View {
 
     private var startupView: some View {
         VStack(spacing: 0) {
-            HStack(alignment: .top, spacing: 12) {
-                Label(tr("Items from your own Library can be switched here. Switching one off only stops it from starting at the next login: nothing running is stopped or deleted, and you can switch it back on. System-wide items need an administrator, so change those in System Settings."),
-                      systemImage: "info.circle")
-                    .font(.callout).foregroundStyle(Color.neuInk).fixedSize(horizontal: false, vertical: true)
-                Spacer(minLength: 0)
+            InfoBanner(summary: tr("Switch your own login items off or on here. Nothing that is running gets stopped."),
+                       details: tr("Items from your own Library can be switched here. Switching one off only stops it from starting at the next login: nothing running is stopped or deleted, and you can switch it back on. System-wide items need an administrator, so change those in System Settings."),
+                       open: model.openBanners.contains(.startup), toggle: { model.toggleBanner(.startup) }) {
                 Button(tr("Open Login Items settings"), action: actions.openLoginSettings)
             }
-            .padding(10)
-            .background(RoundedRectangle(cornerRadius: 8).fill(Color.neuBg))
-            .padding(.horizontal, 16).padding(.bottom, 8)
             if model.startup.isEmpty {
                 Text(model.startupLoading ? tr("Reading startup items (a few seconds)…") : tr("Nothing starts by itself."))
                     .foregroundStyle(.secondary).frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -599,6 +720,94 @@ struct ActivityView: View {
                 Spacer()
                 if model.startupLoading { ProgressView().controlSize(.small) }
                 Button(tr("Refresh")) { model.refreshStartup() }.buttonStyle(.link)
+            }
+            .padding(.horizontal, 16).padding(.vertical, 8)
+        }
+    }
+
+    // MARK: drivers
+
+    private func driverKindChip(_ k: DriverKind) -> some View {
+        let label: String
+        switch k {
+        case .systemExtension: label = tr("System extension")
+        case .kernelExtension: label = tr("Kernel extension")
+        case .helperTool: label = tr("Helper tool")
+        }
+        return Text(label).font(.caption.bold()).foregroundStyle(Color.neuInk)
+            .padding(.horizontal, 9).padding(.vertical, 2).background(Capsule().fill(Color.neuBg))
+    }
+
+    private func driverStatusChip(_ s: DriverStatus) -> some View {
+        let look: (icon: String, label: String, bg: Color, ink: Color)
+        switch s {
+        case .probablyUnused: look = ("exclamationmark.triangle", trkey("Probably not in use"), .slowBg, .slowInk)
+        case .makerAppMissing: look = ("questionmark.circle", trkey("Maker's app not found"), .slowBg, .slowInk)
+        case .switchedOff: look = ("power", trkey("Switched off"), .neuBg, .neuInk)
+        case .pending: look = ("clock", trkey("Waiting"), .neuBg, .neuInk)
+        case .legacy: look = ("clock.arrow.circlepath", trkey("Old type"), .slowBg, .slowInk)
+        case .enabled: look = ("checkmark", trkey("Enabled"), .calmBg, .calmInk)
+        case .installed: look = ("shippingbox", trkey("Installed"), .neuBg, .neuInk)
+        }
+        return HStack(spacing: 4) {
+            Image(systemName: look.icon).font(.system(size: 10, weight: .bold)).accessibilityHidden(true)
+            Text(tr(look.label)).font(.caption.bold())
+        }
+        .foregroundStyle(look.ink)
+        .padding(.horizontal, 9).padding(.vertical, 2)
+        .background(Capsule().fill(look.bg))
+    }
+
+    private func driverDetail(_ item: DriverItem) -> String {
+        item.detailArg.map { tr(item.detail, $0) } ?? tr(item.detail)
+    }
+
+    private var driversView: some View {
+        VStack(spacing: 0) {
+            InfoBanner(summary: tr("Read only: drivers are listed here, never removed by this app."),
+                       details: tr("Read only: this app does not remove drivers, because removing one needs an administrator and can break the software that uses it. “Probably not in use” means it is switched off and no app from the same maker is installed. Only the maker can say whether a driver is out of date, so compare the version with the maker's website. To remove one, use the maker's uninstaller; System Settings can switch an extension off. Kernel extensions are the old kind of driver, and Apple silicon Macs load them only with reduced security."),
+                       open: model.openBanners.contains(.drivers), toggle: { model.toggleBanner(.drivers) }) {
+                Button(tr("Open Login Items settings"), action: actions.openLoginSettings)
+            }
+            if model.driversReadFailed && !model.driversLoading {
+                Label(tr("macOS did not list the system extensions (the read failed or timed out), so some drivers may be missing here."), systemImage: "exclamationmark.triangle")
+                    .font(.callout).foregroundStyle(Color.slowInk)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 16).padding(.bottom, 8)
+            }
+            if model.filteredDrivers.isEmpty {
+                Text(model.driversLoading ? tr("Reading drivers (a few seconds)…")
+                     : (model.query.trimmingCharacters(in: .whitespaces).isEmpty ? tr("No third-party drivers found.") : tr("No driver matches that name.")))
+                    .foregroundStyle(.secondary).frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                Table(model.filteredDrivers, sortOrder: $model.driversSort) {
+                    TableColumn(tr("Item"), value: \.name) { item in
+                        VStack(alignment: .leading, spacing: 0) {
+                            Text(item.name).fontWeight(.semibold).lineLimit(1).truncationMode(.tail)
+                            Text(item.identifier).font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+                        }
+                        .help(item.identifier)
+                    }
+                    .width(min: 160, ideal: 210)
+                    TableColumn(tr("Status"), value: \.statusRank) { item in driverStatusChip(item.status) }
+                        .width(min: 150, ideal: 170)
+                    TableColumn(tr("Kind"), value: \.kindRank) { item in driverKindChip(item.kind) }
+                        .width(min: 110, ideal: 120)
+                    TableColumn(tr("Version or date")) { item in
+                        Text(item.info ?? "—").monospacedDigit().foregroundStyle(.secondary).lineLimit(1).truncationMode(.tail).help(item.info ?? "")
+                    }
+                    .width(min: 70, ideal: 90)
+                    TableColumn(tr("Details")) { item in
+                        Text(driverDetail(item)).font(.callout).foregroundStyle(.secondary).lineLimit(2).truncationMode(.tail).help(driverDetail(item))
+                    }
+                }
+            }
+            HStack {
+                Text(tr("Drivers: %d. Nothing is changed here.", model.drivers.count))
+                    .font(.caption).foregroundStyle(.secondary)
+                Spacer()
+                if model.driversLoading { ProgressView().controlSize(.small) }
+                Button(tr("Refresh")) { model.refreshDrivers() }.buttonStyle(.link)
             }
             .padding(.horizontal, 16).padding(.vertical, 8)
         }
@@ -656,16 +865,11 @@ struct ActivityView: View {
 
     private var storageView: some View {
         VStack(spacing: 0) {
-            HStack(alignment: .top, spacing: 12) {
-                Label(tr("Only your own Library is listed. Nothing is deleted automatically: you choose each item, and Move to Trash can be undone from the Trash. System-wide files in /Library are never touched here."),
-                      systemImage: "info.circle")
-                    .font(.callout).foregroundStyle(Color.neuInk).fixedSize(horizontal: false, vertical: true)
-                Spacer(minLength: 0)
+            InfoBanner(summary: tr("Nothing is deleted automatically: you choose each item, and the Trash can undo it."),
+                       details: tr("Only your own Library is listed. Nothing is deleted automatically: you choose each item, and Move to Trash can be undone from the Trash. System-wide files in /Library are never touched here."),
+                       open: model.openBanners.contains(.storage), toggle: { model.toggleBanner(.storage) }) {
                 Toggle(tr("Hide items under 1 MB"), isOn: $model.hideSmall).toggleStyle(.checkbox)
             }
-            .padding(10)
-            .background(RoundedRectangle(cornerRadius: 8).fill(Color.neuBg))
-            .padding(.horizontal, 16).padding(.bottom, 8)
             if model.observeOnly {
                 Label(tr("Observe only: you can look, but not move anything. Turn it off in Settings to move items to the Trash."), systemImage: "eye")
                     .font(.callout).foregroundStyle(Color.neuInk)
