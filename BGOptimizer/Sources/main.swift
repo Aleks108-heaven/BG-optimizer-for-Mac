@@ -388,7 +388,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         firstRunWindow?.close()
     }
 
-    /// Dev aid: opens the Activity window, minimizes it, restores it and closes it, writing what the app does at each step to the log.
+    /// Dev aid: opens the Activity window, visits every tab, minimizes it, restores it and closes it, writing what the app does at each
+    /// step to the log. Each step waits until the one before has really happened (a tab's data arrived, the window changed state, the
+    /// app went back to menu-bar-only) and then a moment more, so a slow or busy machine only makes the test longer. It cannot run a
+    /// check before the thing it checks has happened (fixed clock times did exactly that on a slow shared CI runner).
     private func runWindowSelfTest() {
         func state(_ label: String) {
             let w = activityWindow
@@ -396,26 +399,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             log.write("SELFTEST", "\(label): \(policy), minimized=\(w?.isMiniaturized ?? false), visible=\(w?.isVisible ?? false), "
                       + "refreshTimer=\(activity.isRefreshing), engineBuildsRows=\(engine.activityEnabled), startupItems=\(activity.startup.count), storageItems=\(activity.storage.count), driverItems=\(activity.drivers.count), thermalRead=\(activity.thermal != nil), thermalSensors=\(activity.thermal?.sensors.count ?? -1), thermalFans=\(activity.thermal?.fans.count ?? -1), powerRead=\(activity.power != nil), powerLogRead=\(activity.power?.logRead ?? false), powerSessions=\(activity.power?.sessions.count ?? -1), mainMenuTitles=\(NSApp.mainMenu?.items.map { $0.title } ?? [])")
         }
-        func at(_ t: Double, _ f: @escaping () -> Void) { DispatchQueue.main.asyncAfter(deadline: .now() + t, execute: f) }
-        at(0.5) { state("start (nothing open)") }
-        at(1.0) { self.showActivity() }
-        at(1.5) { self.activity.select(.startup) }                   // reads the real startup list (about 3 s)
-        at(5.5) { state("Startup tab loaded") }
-        at(5.6) { self.activity.select(.storage) }                   // reads your Library (read only)
-        at(10.0) { state("Storage tab loaded") }
-        at(10.1) { self.activity.select(.drivers) }                  // lists system extensions and helper tools (read only)
-        at(13.0) { state("Drivers tab loaded") }
-        at(13.1) { self.activity.select(.fans) }                     // reads the fans and sensors (read only)
-        at(14.5) { state("Fans tab loaded") }
-        at(14.6) { self.activity.select(.battery) }                  // reads macOS's power log with pmset (about 2 s, read only)
-        at(19.0) { state("Battery tab loaded") }
-        at(19.1) { self.activityWindow?.miniaturize(nil) }
-        at(21.5) { state("window minimized") }
-        at(21.6) { self.activityWindow?.deminiaturize(nil) }
-        at(24.0) { state("window restored") }
-        at(24.1) { self.activityWindow?.close() }
-        at(25.5) { state("window closed") }
-        at(26.0) { NSApp.terminate(nil) }
+        let a = activity
+        var steps: [(wait: Double, action: () -> Void, until: () -> Bool)] = []
+        func step(_ wait: Double, _ action: @escaping () -> Void, until: @escaping () -> Bool = { true }) { steps.append((wait, action, until)) }
+        step(0.5) { state("start (nothing open)") }
+        step(0.5) { self.showActivity() }
+        step(0.3, { a.select(.startup) }, until: { !a.startupLoading })                    // reads the real startup list (about 3 s)
+        step(0.3) { state("Startup tab loaded") }
+        step(0.1, { a.select(.storage) }, until: { !a.storageLoading })                    // reads your Library (read only)
+        step(0.3) { state("Storage tab loaded") }
+        step(0.1, { a.select(.drivers) }, until: { !a.driversLoading })                    // lists system extensions and helper tools (read only)
+        step(0.3) { state("Drivers tab loaded") }
+        step(0.1, { a.select(.fans) }, until: { a.thermal != nil })                        // reads the fans and sensors (read only)
+        step(0.3) { state("Fans tab loaded") }
+        step(0.1, { a.select(.battery) }, until: { !a.powerLoading && a.power != nil })    // reads macOS's power log with pmset (about 2 s, read only)
+        step(0.3) { state("Battery tab loaded") }
+        step(0.3, { self.activityWindow?.miniaturize(nil) }, until: { (self.activityWindow?.isMiniaturized ?? false) && !a.isRefreshing })
+        step(0.5) { state("window minimized") }
+        step(0.3, { self.activityWindow?.deminiaturize(nil) }, until: { !(self.activityWindow?.isMiniaturized ?? true) && a.isRefreshing })
+        step(0.5) { state("window restored") }
+        step(0.3, { self.activityWindow?.close() }, until: { NSApp.activationPolicy() != .regular })
+        step(0.5) { state("window closed") }
+        step(0.3) { NSApp.terminate(nil) }
+        func run(_ i: Int) {
+            guard i < steps.count else { return }
+            let s = steps[i]
+            DispatchQueue.main.asyncAfter(deadline: .now() + s.wait) {
+                s.action()
+                let giveUp = Date().addingTimeInterval(20)                                  // a step that never completes is reported by its check, not waited on forever
+                func poll() {
+                    if s.until() || Date() > giveUp { run(i + 1) } else { DispatchQueue.main.asyncAfter(deadline: .now() + 0.1, execute: poll) }
+                }
+                poll()
+            }
+        }
+        run(0)
     }
 
     // MARK: Dock icon, menu bar and window lifecycle

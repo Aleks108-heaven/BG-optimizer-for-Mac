@@ -18,8 +18,8 @@ attempt() {
 rm -rf "$W/log"
 BGOPT_LOG_DIR="$W/log" "$W/T.app/Contents/MacOS/BGOptimizer" --selftest-window >"$W/out.txt" 2>&1 &
 PID=$!
-for _ in $(seq 1 60); do kill -0 "$PID" 2>/dev/null || break; sleep 1; done
-if kill -0 "$PID" 2>/dev/null; then echo "FAIL: the app did not finish the test in 60 s"; return 1; fi
+for _ in $(seq 1 150); do kill -0 "$PID" 2>/dev/null || break; sleep 1; done      # the app waits for each step, so a slow machine takes longer
+if kill -0 "$PID" 2>/dev/null; then echo "FAIL: the app did not finish the test in 150 s"; return 1; fi
 LOG="$W/log/actions.log"; FAIL=0
 expect() { if grep -E "SELFTEST $1" "$LOG" | grep -qE "$2"; then echo "  pass $3"; else echo "  FAIL $3"; grep "SELFTEST $1" "$LOG" | cut -c1-200; FAIL=1; fi; }
 expect "start" "accessory" "starts as a menu-bar-only app"
