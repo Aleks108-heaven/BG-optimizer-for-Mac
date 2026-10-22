@@ -32,6 +32,9 @@ func lastNotice() -> (String, Bool)? { notices.last }
 // delay. These wait for what is expected (up to 3 s) instead of guessing, and a banner must be NEW (not left over from an earlier step).
 func waitUntil(_ timeout: Double = 3, _ cond: () -> Bool) { let end = Date().addingTimeInterval(timeout); while !cond() && Date() < end { RunLoop.main.run(until: Date().addingTimeInterval(0.05)) } }
 var mark = 0
+// A banner from the previous step can still be on its way (a busy runner delayed one past the next step's start, and it was then taken
+// for the new step's own, so a correct refusal looked like a missing banner). Each step lets late banners land before it marks its start.
+func beginStep() { RunLoop.main.run(until: Date().addingTimeInterval(0.5)); mark = notices.count }
 func newNotice() -> (String, Bool)? { waitUntil { notices.count > mark }; return notices.count > mark ? notices.last : nil }
 func priIs(_ pid: Int32, _ value: String) -> Bool { waitUntil { pri(pid) == value }; return pri(pid) == value }
 func isOK(_ r: ActivityRow?) -> Bool { if case .ok? = r.map({ $0.access }) { return true }; return false }
@@ -45,13 +48,13 @@ at(3)   { print("rows offered before any action")
           check((ProcTable.memoryFootprint(getpid()) ?? 0) > 1_000_000, "this program's own memory is read (more than 1 MB)")
           check(ProcTable.memoryFootprint(999_999) == nil, "a process that does not exist has no memory reading")
           if finder != 0 { check(isLocked(rows[finder]) && rows[finder]?.canProtect == false, "a system process is locked and cannot even be added to the list") } else { print("  skipped: no system process to test against") } }
-at(3.2) { print("[A] slow a normal job"); mark = notices.count; engine.slowManually(pid: sleeper, start: startOf(sleeper), confirmedInteractive: false) }
+at(3.2) { print("[A] slow a normal job"); beginStep(); engine.slowManually(pid: sleeper, start: startOf(sleeper), confirmedInteractive: false) }
 at(4.5) { check(newNotice()?.1 == false, "success banner"); check(priIs(sleeper, "4"), "priority 31 -> 4 (read with ps)"); waitUntil { rows[sleeper]?.canRestore == true }; check(rows[sleeper]?.canRestore == true, "table now offers Restore") }
-at(4.6) { if finder != 0 { print("[B] try to slow a system process, even with confirmation"); mark = notices.count; engine.slowManually(pid: finder, start: startOf(finder), confirmedInteractive: true) } }
+at(4.6) { if finder != 0 { print("[B] try to slow a system process, even with confirmation"); beginStep(); engine.slowManually(pid: finder, start: startOf(finder), confirmedInteractive: true) } }
 at(5.2) { if finder != 0 { check(newNotice()?.1 == true, "refusal banner"); check(pri(finder) == finderBefore, "system process priority unchanged") } }
-at(5.3) { print("[C] wrong identity (start time + 1)"); mark = notices.count; engine.slowManually(pid: chrome, start: startOf(chrome) + 1, confirmedInteractive: true) }
+at(5.3) { print("[C] wrong identity (start time + 1)"); beginStep(); engine.slowManually(pid: chrome, start: startOf(chrome) + 1, confirmedInteractive: true) }
 at(5.9) { check(newNotice()?.1 == true, "refusal banner"); check(pri(chrome) == normalChrome, "browser-like job untouched") }
-at(6.0) { print("[D] browser-like job without confirmation"); mark = notices.count; engine.slowManually(pid: chrome, start: startOf(chrome), confirmedInteractive: false) }
+at(6.0) { print("[D] browser-like job without confirmation"); beginStep(); engine.slowManually(pid: chrome, start: startOf(chrome), confirmedInteractive: false) }
 at(6.6) { check(newNotice()?.1 == true, "refusal banner"); check(pri(chrome) == normalChrome, "still untouched") }
 at(6.7) { print("[E] browser-like job with confirmation"); engine.slowManually(pid: chrome, start: startOf(chrome), confirmedInteractive: true) }
 at(7.7) { check(priIs(chrome, "4"), "slowed after confirmation") }
@@ -64,7 +67,7 @@ at(14.8){ check(priIs(sleeper, "4"), "slowed again"); engine.update(cfg, protect
 at(16.2){ check(priIs(sleeper, normalSleeper) && priIs(chrome, normalChrome), "protecting released every process of that app")
           waitUntil { rows[sleeper]?.userEntry == "bgsleeper" && isLocked(rows[sleeper]) }
           check(rows[sleeper]?.userEntry == "bgsleeper" && isLocked(rows[sleeper]), "row says it is on your list and is locked") }
-at(16.3){ print("[I] try to slow a protected app"); mark = notices.count; engine.slowManually(pid: sleeper, start: startOf(sleeper), confirmedInteractive: true) }
+at(16.3){ print("[I] try to slow a protected app"); beginStep(); engine.slowManually(pid: sleeper, start: startOf(sleeper), confirmedInteractive: true) }
 at(17.2){ check(newNotice()?.1 == true, "refusal banner"); check(pri(sleeper) == normalSleeper, "refused") }
 at(17.5){ engine.shutdownSync()
           check(pri(sleeper) == normalSleeper && pri(chrome) == normalChrome, "everything is back to normal after quitting")
