@@ -394,7 +394,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             let w = activityWindow
             let policy = NSApp.activationPolicy() == .regular ? "regular (Dock icon)" : "accessory (menu bar only)"
             log.write("SELFTEST", "\(label): \(policy), minimized=\(w?.isMiniaturized ?? false), visible=\(w?.isVisible ?? false), "
-                      + "refreshTimer=\(activity.isRefreshing), engineBuildsRows=\(engine.activityEnabled), startupItems=\(activity.startup.count), storageItems=\(activity.storage.count), driverItems=\(activity.drivers.count), mainMenuTitles=\(NSApp.mainMenu?.items.map { $0.title } ?? [])")
+                      + "refreshTimer=\(activity.isRefreshing), engineBuildsRows=\(engine.activityEnabled), startupItems=\(activity.startup.count), storageItems=\(activity.storage.count), driverItems=\(activity.drivers.count), thermalRead=\(activity.thermal != nil), thermalSensors=\(activity.thermal?.sensors.count ?? -1), thermalFans=\(activity.thermal?.fans.count ?? -1), powerRead=\(activity.power != nil), powerLogRead=\(activity.power?.logRead ?? false), powerSessions=\(activity.power?.sessions.count ?? -1), mainMenuTitles=\(NSApp.mainMenu?.items.map { $0.title } ?? [])")
         }
         func at(_ t: Double, _ f: @escaping () -> Void) { DispatchQueue.main.asyncAfter(deadline: .now() + t, execute: f) }
         at(0.5) { state("start (nothing open)") }
@@ -405,13 +405,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         at(10.0) { state("Storage tab loaded") }
         at(10.1) { self.activity.select(.drivers) }                  // lists system extensions and helper tools (read only)
         at(13.0) { state("Drivers tab loaded") }
-        at(13.1) { self.activityWindow?.miniaturize(nil) }
-        at(15.5) { state("window minimized") }
-        at(15.6) { self.activityWindow?.deminiaturize(nil) }
-        at(18.0) { state("window restored") }
-        at(18.1) { self.activityWindow?.close() }
-        at(19.5) { state("window closed") }
-        at(20.0) { NSApp.terminate(nil) }
+        at(13.1) { self.activity.select(.fans) }                     // reads the fans and sensors (read only)
+        at(14.5) { state("Fans tab loaded") }
+        at(14.6) { self.activity.select(.battery) }                  // reads macOS's power log with pmset (about 2 s, read only)
+        at(19.0) { state("Battery tab loaded") }
+        at(19.1) { self.activityWindow?.miniaturize(nil) }
+        at(21.5) { state("window minimized") }
+        at(21.6) { self.activityWindow?.deminiaturize(nil) }
+        at(24.0) { state("window restored") }
+        at(24.1) { self.activityWindow?.close() }
+        at(25.5) { state("window closed") }
+        at(26.0) { NSApp.terminate(nil) }
     }
 
     // MARK: Dock icon, menu bar and window lifecycle
@@ -664,9 +668,54 @@ func snapshotActivityAndWelcome(prefix: String) -> Never {
     let expanded = ActivityModel(rows: rows, system: status, engineOn: true, tab: .drivers, drivers: drivers)
     expanded.openBanners = [.drivers]                // the explanation opened with "More"
     render(ActivityView(model: expanded, actions: noActions), size: size, appearance: .aqua, to: "\(prefix)-activity-drivers-expanded.png")
+    func sensors(_ pairs: [(String, Double)]) -> [TempSensor] {
+        pairs.enumerated().compactMap { ThermalAnalysis.sensor(id: $0.offset, name: $0.element.0, celsius: $0.element.1) }
+    }
+    let temps = sensors([("PMU tdie1", 62.4), ("PMU tdie2", 64.0), ("PMU2 tdie1", 63.1), ("pACC MTR Temp Sensor2", 71.2), ("pACC MTR Temp Sensor9", 88.1),
+                         ("pACC MTR Temp Sensor10", 70.4), ("eACC MTR Temp Sensor0", 55.0), ("GPU MTR Temp Sensor1", 48.3), ("ANE MTR Temp Sensor1", 40.0),
+                         ("SOC MTR Temp Sensor0", 52.0), ("gas gauge battery", 36.0), ("gas gauge battery", 36.5), ("NAND CH0 temp", 41.5),
+                         ("PMU tdev1", 45.0), ("PMU TP3w", 47.2)])
+    let oneFan = ThermalReadout(fans: [FanReading(index: 0, rpm: 3120, minRPM: 1199, maxRPM: 7199, targetRPM: 0, manual: false)],
+                                sensors: temps, fanCount: 1, smcAvailable: true, sensorsAvailable: true)
+    render(ActivityView(model: ActivityModel(rows: rows, system: status, engineOn: true, tab: .fans, thermal: oneFan), actions: noActions), size: size, appearance: .aqua, to: "\(prefix)-activity-fans.png")
+    render(ActivityView(model: ActivityModel(rows: rows, system: status, engineOn: true, tab: .fans, thermal: oneFan), actions: noActions), size: size, appearance: .darkAqua, to: "\(prefix)-activity-fans-dark.png")
+    let everySensor = ActivityModel(rows: rows, system: status, engineOn: true, tab: .fans,
+                                    thermal: ThermalReadout(fans: [FanReading(index: 0, rpm: 6400, minRPM: 1199, maxRPM: 7199, targetRPM: 6500, manual: true),
+                                                                   FanReading(index: 1, rpm: 0, minRPM: 1199, maxRPM: 7199, targetRPM: 0, manual: false)],
+                                                            sensors: temps + sensors([("PMU tdie3", 101.0), ("gas gauge battery", 47.0)]), fanCount: 2, smcAvailable: true, sensorsAvailable: true))
+    everySensor.showAllSensors = true
+    everySensor.openBanners = [.fans]
+    render(ActivityView(model: everySensor, actions: noActions), size: NSSize(width: 760, height: 900), appearance: .aqua, to: "\(prefix)-activity-fans-everything.png")
+    let fanless = ThermalReadout(fans: [], sensors: temps, fanCount: 0, smcAvailable: true, sensorsAvailable: true)
+    render(ActivityView(model: ActivityModel(rows: rows, system: status, engineOn: true, tab: .fans, thermal: fanless), actions: noActions), size: size, appearance: .aqua, to: "\(prefix)-activity-fans-none.png")
+    render(ActivityView(model: ActivityModel(rows: rows, system: status, engineOn: true, tab: .fans, thermal: ThermalReadout()), actions: noActions), size: size, appearance: .aqua, to: "\(prefix)-activity-fans-unavailable.png")
+    // A made-up week run through the real analysis: awake stretches on battery, nights asleep with dark wakes, nights on the charger.
+    var week: [PowerEvent] = []
+    let weekStart = Date().addingTimeInterval(-6 * 86_400)
+    func evt(_ day: Int, _ hour: Double, _ kind: PowerEventKind, _ pct: Int, ac: Bool = false, _ reason: String = "") {
+        week.append(PowerEvent(date: weekStart.addingTimeInterval(Double(day) * 86_400 + hour * 3600), kind: kind, percent: pct, onAC: ac, reason: reason))
+    }
+    for day in 0..<6 {
+        let charged = day % 3 != 2                                   // two nights in three on the charger
+        evt(day, 8, .wake, charged ? 100 : 97, ac: charged)
+        evt(day, 12.5, .sleep, charged ? 100 : 68, ac: false, "Idle Sleep")
+        evt(day, 13.5, .wake, charged ? 100 : 67)
+        evt(day, 18, .sleep, charged ? 58 : 36, ac: charged, "Clamshell Sleep")
+        for i in 0..<30 {                                            // dark wakes through the night
+            evt(day, 18.25 + Double(i) * 0.5, .darkWake, charged ? 90 : 36, ac: charged)
+            evt(day, 18.25 + Double(i) * 0.5 + 0.002, .sleep, charged ? 90 : 36, ac: charged, "Maintenance Sleep")
+        }
+    }
+    let powerHistory = PowerAnalysis.history(events: week, now: (Date(), 83, false), logRead: true)
+    render(ActivityView(model: ActivityModel(rows: rows, system: status, engineOn: true, tab: .battery, power: powerHistory), actions: noActions), size: size, appearance: .aqua, to: "\(prefix)-activity-battery.png")
+    render(ActivityView(model: ActivityModel(rows: rows, system: status, engineOn: true, tab: .battery, power: powerHistory), actions: noActions), size: size, appearance: .darkAqua, to: "\(prefix)-activity-battery-dark.png")
+    render(ActivityView(model: ActivityModel(rows: rows, system: status, engineOn: true, tab: .battery, power: PowerHistory(logRead: false)), actions: noActions), size: size, appearance: .aqua, to: "\(prefix)-activity-battery-unavailable.png")
+    render(ActivityView(model: ActivityModel(rows: rows, system: status, engineOn: true, tab: .battery, power: PowerHistoryReader.read()), actions: noActions), size: size, appearance: .aqua, to: "\(prefix)-activity-battery-real.png")   // this Mac's own power log
     let small = NSSize(width: 600, height: 440)      // about the smallest size the window can be made: the table must still have room
     render(ActivityView(model: ActivityModel(rows: rows, system: status, engineOn: true), actions: noActions), size: small, appearance: .aqua, to: "\(prefix)-activity-small.png")
     render(ActivityView(model: ActivityModel(rows: rows, system: status, engineOn: true, tab: .drivers, drivers: drivers), actions: noActions), size: small, appearance: .aqua, to: "\(prefix)-activity-drivers-small.png")
+    render(ActivityView(model: ActivityModel(rows: rows, system: status, engineOn: true, tab: .fans, thermal: oneFan), actions: noActions), size: small, appearance: .aqua, to: "\(prefix)-activity-fans-small.png")
+    render(ActivityView(model: ActivityModel(rows: rows, system: status, engineOn: true, tab: .battery, power: powerHistory), actions: noActions), size: small, appearance: .aqua, to: "\(prefix)-activity-battery-small.png")
     render(ActivityView(model: ActivityModel(rows: rows, system: status, engineOn: true, tab: .log, log: log), actions: noActions), size: size, appearance: .aqua, to: "\(prefix)-activity-log.png")
     render(SettingsView(model: AppModel(previewEnabled: true), actions: SettingsActions(setLogin: { _ in }, giveBack: {})),
            size: NSSize(width: 520, height: 560), appearance: .aqua, to: "\(prefix)-settings-light.png")

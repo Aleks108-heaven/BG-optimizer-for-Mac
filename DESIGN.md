@@ -288,3 +288,86 @@ detail texts are short enough to show the maker.
 **Not checked:** VoiceOver and Full Keyboard Access on the new strip and the More button (labels are set, not heard); contrast was
 not measured, the colours are the existing ones.
 
+## 19. Fans and temperatures
+
+**The question.** "Can BG Optimizer monitor and control the fans and temperature sensors, like Macs Fan Control?" It started from a
+laptop that was hot after 30 minutes or more on the charger. Monitoring is possible without any privilege and is built. Control is
+not, for the reason in section 17: it needs an administrator. The menu-bar icon and Launch at login the question also mentions
+already existed.
+
+**What was checked on the development Mac (M1 MacBook Pro, `MacBookPro17,1`, macOS 27), as an ordinary user.** The SMC opens and
+answers: 1 fan, 1,199 to 7,199 rpm, 0 rpm and automatic mode at idle, 154 temperature keys. Apple's HID thermal service lists 57 named
+sensors (`pACC MTR Temp Sensor2`, `PMU tdie1`, `gas gauge battery`, `NAND CH0 temp`, ...). **A write is refused:** writing the fan
+mode key with the value it already had (0, so nothing could change) returned `kIOReturnNotPrivileged` (0xe00002c1).
+
+**Design.** A Fans tab next to Processes: one card per fan (rpm, a bar against its maximum, the range; "Stopped" at 0 rpm; "Not
+automatic" with an explanation if the mode key is not 0), then the temperatures grouped by what they measure, each group showing its
+hottest reading with a level (Normal, Warm, Hot: a symbol and a word). A check box lists every sensor by its own name. Groups come from
+the sensor names, not from the SMC's four-letter keys, which are undocumented and differ by chip. The window's thermal-state reading
+stays visible above, because that, not a temperature, says whether macOS is slowing the chip. Read only every 5 seconds, only while
+the tab is showing, so nothing is polled otherwise.
+
+**Honest about the data.** Two sensors report a fixed or impossible value (-21.7 and -21.6 were seen) and two report a calibration
+constant (`tcal`, 51.9 on both); these 4 of 57 are left out and the banner says so. The levels are rough guides: Apple publishes no
+limits, and the chip, battery and SSD get different ones. A Mac with no fan, or one that does not answer, gets a sentence instead of an
+empty list.
+
+**Not built, on purpose: setting fan speed.** It needs a root helper (a launch daemon reached over XPC) that writes to the SMC. That is
+the weakness section 17 and `SECURITY-REVIEW.md` S-20 rule out, and this build is signed ad hoc, so the helper could only check its
+caller by identifier, which is the weak form. A wrong speed setting can also let a Mac get hotter than macOS would allow. If it is ever
+added, it should be a separate, opt-in change with its own review. Also not built: a temperature in the menu bar (it would mean
+polling when no window is open), alerts, and a history graph.
+
+**Not verified:** the tab clicked in the real window (Show every sensor, Refresh, More); a Mac with two fans (tested with sample
+data and the decoding rules only); a Mac without a fan (same); the readings on an Intel Mac (the app is Apple silicon only); VoiceOver
+reading the fan bar and the level labels (labels are set, not heard); how the readings behave while the Mac is charging and hot, which
+is the case that prompted the tab.
+
+## 20. Battery history: awake and asleep
+
+**The question.** "Show battery drain while asleep versus awake, in the app, so next time the answer is there." Next time is the
+point: the answer must not depend on the app having been watching.
+
+**Source: the system's own power log.** `pmset -g log` is readable by any user, covers about a week (15 to 22 Oct on the development
+Mac: 5.8 MB, 19,068 lines) and records every sleep, dark wake and wake with the battery percentage and whether the Mac was on
+battery or AC. So the tab shows nights from before it existed, needs no background sampler (nothing new runs while the window is
+closed) and stores nothing. The cost is paid only when the tab is opened or Refresh is pressed: about 2.0 s to run `pmset`, 0.24 s to
+parse, under a millisecond to analyse (measured). Rejected: a sampler of our own (it cannot see a sleep, because the app does not
+run asleep, and it would add background work); the SMC or IORegistry (no history).
+
+**Sessions.** A sleep is a *chain*: one real sleep (lid closed, or idle), then many dark wakes of a few seconds with the Mac asleep
+in between, then one real wake. The chain is one asleep session and the dark wakes are counted inside it, because they are part of
+why a sleeping Mac still uses a little battery. On the development Mac a week looked like this: **0.12 points per hour asleep**
+(86% to 67% over 6.8 days, a full battery would last about 36 days), **about 650 dark wakes, one about every 15 minutes, 32 minutes awake in
+all** (the count drifts by one or two as the log's oldest lines age out), and **about 10.8 points per hour awake** (two stretches today, 15.0 and 7.3). The numbers answer "is sleep the problem": here
+sleep costs about 90 times less than being awake.
+
+**Honest about the data.** The battery shows whole percent, so a rate from a change of 1 or 2 points is marked "~"; the summary adds
+points and hours before dividing, so long sessions count for more than short ones (the mean of the rates would let a 10-minute
+session count as much as 6 days). A session counts only if it was on battery at both ends, the charge did not rise and it lasted at
+least 5 minutes. Plugging in between two log lines is invisible: on the development Mac the last awake session shows 48% to 89%
+and is labelled "Charged in between" and left out; a session in which the Mac was charged and then drained below its start would be
+mis-measured, and the banner says so. The log beginning in the middle of a sleep is shown ("Longer than shown"), not hidden. This
+tab does not look at restarts or shutdowns, so a long power-off would sit inside an awake session and make it look slow-draining (not seen on the development Mac, and not checked against a Mac that was shut down).
+
+**Design.** A Battery tab next to Fans. Two cards (awake, asleep) with the rate, how long a full battery would last, the number of
+sessions and hours, and for sleep the brief wakes and how often; one line comparing them when both are measured well enough (3
+points or more each); a chart (Swift Charts, an Apple framework, so still no third-party code) with the sleeping periods shaded and
+the line broken wherever the power source changes; then every session, newest first. Plugged-in and rising sessions say so in
+words instead of a number. The same card style, symbols with words, banner and Refresh as the other tabs; English and Ukrainian,
+including the Ukrainian plural forms (1 сеанс, 2 сеанси, 5 сеансів).
+
+**A defect found on the way, in the previous tab.** Adding the Fans tab made the tab picker (six segments) wider than the smallest
+window in Ukrainian ("Журнал" was cut off at 600 x 440; English was fine). With a seventh tab it would not fit in English either.
+The picker now falls back to a pop-up menu whenever the segments do not fit (the toolbar already used `ViewThatFits`), and the
+smallest window shows "Акумулятор" in a menu instead of a clipped bar.
+
+**Not built, on purpose:** keeping history longer than macOS does (it would mean a background reader or a stored file; a daily read
+is the obvious next step); a reason for each wake (the log names the requester, for example `dasd`, in lines that are long and
+change between versions); alerts; separating a display-off but awake Mac from an awake one.
+
+**Not verified:** the tab clicked in the real window (Refresh, More); a Mac with a different log (older macOS, a "Wake from Normal
+Sleep" form, a Mac that hibernates); a Mac with no battery (the message is drawn from sample data only); VoiceOver on the chart (a
+label is set and Swift Charts supplies an audio graph; neither was heard); an overnight session measured against a reading taken by
+hand; what the log looks like around a clock change (the offset in each line is honoured and tested with +0300 and -0700).
+

@@ -143,6 +143,27 @@ is written to the log as `LOGIN`. Command line: `BGOptimizer --login on|off|stat
   apps show their state and a **Settings…** button that opens System Settings, because changing them needs an
   administrator. Security tools, macOS items and this app are locked. The list takes a few seconds to read and is read
   only when the tab is opened or Refresh is pressed.
+- *Fans*: **read only.** Each fan's speed (rpm), its range, and whether it is in automatic mode ("Not automatic" means
+  something other than macOS, such as a fan-control app, has taken it over), and the temperature sensors in groups with the
+  hottest reading of each: chip, CPU performance and efficiency cores, GPU, Neural Engine, battery, SSD and others
+  (**Show every sensor** lists them all by name). A state is shown with a symbol and a word, not only a colour; the limits
+  (chip warm from 85 °C and hot from 100 °C, battery 45 and 55, SSD 70 and 80) are rough guides, because Apple publishes none.
+  A Mac without a fan (the MacBook Air) says so. It is read every 5 seconds only while this tab is showing. **The app does not
+  set fan speed:** that needs administrator rights (an ordinary program is refused by the system), and this app asks for none
+  and installs no helper. macOS runs the fans itself; the Thermal state tile shows when it is actually slowing the chip down.
+  The readings come from the SMC and Apple's thermal sensors, which Apple does not document (see `SECURITY-REVIEW.md` S-24).
+- *Battery*: **read only.** How fast the battery drains while the Mac is **awake** and while it is **asleep**, from the
+  power log macOS keeps itself (`pmset -g log`, about the last week), so it also shows nights from before the tab existed and
+  nothing runs in the background to collect it. Two cards give the drain in percentage points per hour and how long a full
+  battery would last at that rate; for sleep they also count how often the Mac woke itself for a moment (maintenance and
+  push wakes, typically a few seconds each) and how long those add up to. Below are a chart of the battery level with the
+  sleeping periods shaded, and every session (a stretch awake or asleep) with its length, what started the sleep (lid
+  closed, idle), the level at each end and the drain. Only sessions on battery from start to end are measured (plugged-in
+  time is shown but not counted), and a session shorter than 5 minutes is left out. The battery reports whole percent, so a
+  change of 1 or 2 points is marked "~" (rough). It is read when the tab is opened or **Refresh** is pressed (about 2 seconds).
+  Limits: macOS keeps about a week; plugging in *between* two log lines cannot be seen (only a net rise in charge is, and
+  that session is left out); and the format of the log is not documented by Apple, so the parser accepts only lines it fully
+  understands (a Mac whose log looks different shows no history).
 - *Drivers*: what macOS keeps for third-party hardware and security software: system extensions (`systemextensionsctl
   list`), old kernel extensions in `/Library/Extensions`, and the root helper tools in `/Library/PrivilegedHelperTools`.
   Each row has a status: **Probably not in use** (switched off, and no app from the same maker is installed), **Maker's
@@ -208,7 +229,9 @@ See `SECURITY-REVIEW.md` for the attack surface, findings and performance measur
 Checks the translations, the log (private permissions, one line per entry, clear), the row menu, the Storage rules (what is
 offered, what is never offered, every refusal for Move to Trash, in a stand-in home folder), startup items
 (parsing, the rules for changing, a real read), the security-tool name rule (a name must start a word), the Drivers tab
-(reading `systemextensionsctl list`, the decision for every kind of row, stand-in folders, a real read), the rules for changing jobs by hand (with harmless sleeper processes;
+(reading `systemextensionsctl list`, the decision for every kind of row, stand-in folders, a real read), the Battery tab's
+log parser, sessions and drain figures (hostile and 17 MB input, and this Mac's real log counted a second way), the Fans tab's
+decoding and grouping (the real sensor names of an M1 MacBook Pro, impossible readings refused, no memory growth over 300 reads, a real read that also passes on a Mac without fans), the rules for changing jobs by hand (with harmless sleeper processes;
 a system process of the current user is used only to confirm it is refused), and a start-up test of the finished app
 (windows, Dock icon, minimize and restore). About a minute. On a machine without a Finder, a per-user launchd domain or
 a window server, the parts that need them are skipped with a message. Every section has a time limit, and on GitHub
@@ -235,7 +258,7 @@ Design notes and the reasoning behind decisions are in `DESIGN.md`. The QA notes
 ## Status and limits
 
 Tested on an M1 MacBook (16 GB) running macOS 27 with CPU-burner scripts, harmless sleeper processes and the real
-system. Verified there (the 247 automated checks plus manual checks):
+system. Verified there (the 378 automated checks plus manual checks):
 
 - slowing (scheduler priority 31 to 4), release on calm-down, on quit and on SIGTERM, recovery after `kill -9`,
   single instance, protection lists including user-added names;

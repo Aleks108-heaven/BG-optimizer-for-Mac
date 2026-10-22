@@ -1,4 +1,5 @@
 import AppKit
+import Charts
 import Combine
 import SwiftUI
 
@@ -18,7 +19,7 @@ struct ActivityActions {
 
 /// State of the Activity window. The engine feeds `rows`; the Mac's own status is read here every 5 seconds while the window is open.
 final class ActivityModel: ObservableObject {
-    enum Tab: Int { case processes, startup, storage, log, drivers }
+    enum Tab: Int { case processes, fans, battery, startup, storage, log, drivers }
 
     @Published var tab: Tab = .processes
     @Published var rows: [ActivityRow] = []
@@ -38,6 +39,10 @@ final class ActivityModel: ObservableObject {
     @Published var startup: [StartupItem] = []
     @Published var startupLoading = false
     @Published var startupSort = [KeyPathComparator(\StartupItem.kindRank), KeyPathComparator(\StartupItem.name)]
+    @Published var thermal: ThermalReadout?     // nil until the first read of the Fans tab
+    @Published var showAllSensors = false       // list every sensor, not only the hottest of each group
+    @Published var power: PowerHistory?         // nil until the power log has been read
+    @Published var powerLoading = false
     @Published var drivers: [DriverItem] = []
     @Published var driversLoading = false
     @Published var driversReadFailed = false    // macOS did not list the system extensions, so the list may be incomplete
@@ -57,12 +62,18 @@ final class ActivityModel: ObservableObject {
     var isRefreshing: Bool { timer != nil }
     private let reader = SystemReader()
     private let queue = DispatchQueue(label: "bgopt.system")
+    private let thermalQueue = DispatchQueue(label: "bgopt.thermal")
+    private let powerQueue = DispatchQueue(label: "bgopt.power")
+    private var powerToken = UUID()
+    private lazy var thermalReader = ThermalReader()    // only used on thermalQueue; opens the SMC the first time the Fans tab is shown
 
     init() {}
 
     /// For snapshots only.
     init(rows: [ActivityRow], system: SystemStatus, engineOn: Bool, tab: Tab = .processes, log: String = "", startup: [StartupItem] = [],
-         storage: [StorageItem] = [], drivers: [DriverItem] = []) {
+         storage: [StorageItem] = [], drivers: [DriverItem] = [], thermal: ThermalReadout? = nil, power: PowerHistory? = nil) {
+        self.thermal = thermal
+        self.power = power
         self.startup = startup
         self.storage = storage
         self.drivers = drivers
@@ -113,6 +124,30 @@ final class ActivityModel: ObservableObject {
             DispatchQueue.main.async { self.system = s }
         }
         if tab == .log { logText = logProvider() }
+        if tab == .fans { refreshThermal() }
+    }
+
+    /// Fans and temperatures are read only while their tab is showing (a few milliseconds), so nothing is polled otherwise.
+    func refreshThermal() {
+        thermalQueue.async {
+            let r = self.thermalReader.read()
+            DispatchQueue.main.async { self.thermal = r }
+        }
+    }
+
+    /// Reading the power log takes a couple of seconds (pmset), so it runs in the background and only when the tab is opened or Refresh is pressed.
+    func refreshPower() {
+        let token = UUID()
+        powerToken = token
+        powerLoading = true
+        powerQueue.async {
+            let history = PowerHistoryReader.read()
+            DispatchQueue.main.async {
+                guard self.powerToken == token else { return }          // a newer read is on its way
+                self.power = history
+                self.powerLoading = false
+            }
+        }
     }
 
     func toggleBanner(_ t: Tab) {
@@ -122,6 +157,8 @@ final class ActivityModel: ObservableObject {
     func select(_ t: Tab) {
         tab = t
         if t == .log { logText = logProvider() }
+        if t == .fans { refreshThermal() }
+        if t == .battery { refreshPower() }
         if t == .startup { refreshStartup() }
         if t == .storage { refreshStorage() }
         if t == .drivers { refreshDrivers() }
@@ -367,6 +404,8 @@ struct ActivityView: View {
                 if let text = model.notice { noticeBar(text) }
                 switch model.tab {
                 case .processes: processes
+                case .fans: fansView
+                case .battery: batteryView
                 case .startup: startupView
                 case .drivers: driversView
                 case .storage: storageView
@@ -507,22 +546,36 @@ struct ActivityView: View {
 
     // MARK: toolbar
 
+    @ViewBuilder private var tabItems: some View {
+        Text(tr("Processes")).tag(ActivityModel.Tab.processes)
+        Text(tr("Fans")).tag(ActivityModel.Tab.fans)
+        Text(tr("Battery")).tag(ActivityModel.Tab.battery)
+        Text(tr("Startup")).tag(ActivityModel.Tab.startup)
+        Text(tr("Drivers")).tag(ActivityModel.Tab.drivers)
+        Text(tr("Storage")).tag(ActivityModel.Tab.storage)
+        Text(tr("Log")).tag(ActivityModel.Tab.log)
+    }
+
+    private var tabSelection: Binding<ActivityModel.Tab> { Binding(get: { model.tab }, set: { model.select($0) }) }
+
     private var viewPicker: some View {
-        Picker(tr("View"), selection: Binding(get: { model.tab }, set: { model.select($0) })) {
-            Text(tr("Processes")).tag(ActivityModel.Tab.processes)
-            Text(tr("Startup")).tag(ActivityModel.Tab.startup)
-            Text(tr("Drivers")).tag(ActivityModel.Tab.drivers)
-            Text(tr("Storage")).tag(ActivityModel.Tab.storage)
-            Text(tr("Log")).tag(ActivityModel.Tab.log)
-        }
-        .pickerStyle(.segmented)
-        .labelsHidden()
-        .fixedSize()                    // its natural width, so it lines up with the content below instead of floating in a wider frame
+        Picker(tr("View"), selection: tabSelection) { tabItems }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .fixedSize()                    // its natural width, so it lines up with the content below instead of floating in a wider frame
+    }
+
+    /// The same choice as a pop-up menu, for a window too narrow for seven segments (more so in Ukrainian).
+    private var viewMenu: some View {
+        Picker(tr("View"), selection: tabSelection) { tabItems }
+            .pickerStyle(.menu)
+            .labelsHidden()
+            .fixedSize()
     }
 
     /// The hide-idle switch and the filter. They go on a second line when the window is too narrow for everything on one.
     @ViewBuilder private var viewOptions: some View {
-        if model.tab != .log {
+        if model.tab != .log && model.tab != .fans && model.tab != .battery {
             if model.tab == .processes { Toggle(tr("Hide idle processes"), isOn: $model.onlyActive).toggleStyle(.checkbox) }
             TextField(tr("Filter by name"), text: $model.query)
                 .textFieldStyle(.roundedBorder)
@@ -536,6 +589,11 @@ struct ActivityView: View {
             HStack { viewPicker; Spacer(); viewOptions }
             VStack(alignment: .leading, spacing: 8) {
                 viewPicker
+                HStack { Spacer(); viewOptions }
+            }
+            HStack { viewMenu; Spacer(); viewOptions }
+            VStack(alignment: .leading, spacing: 8) {
+                viewMenu
                 HStack { Spacer(); viewOptions }
             }
         }
@@ -811,6 +869,295 @@ struct ActivityView: View {
             }
             .padding(.horizontal, 16).padding(.vertical, 8)
         }
+    }
+
+    // MARK: fans and temperatures
+
+    private func tempText(_ c: Double) -> String { tr("%.0f °C", c) }
+
+    private func cardStyle<V: View>(_ content: V) -> some View {
+        content
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 10).fill(Color(nsColor: .controlBackgroundColor)))
+            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color(nsColor: .separatorColor)))
+    }
+
+    /// A symbol and a word, so the state is never only a colour.
+    private func levelLabel(_ level: TempLevel) -> some View {
+        let look: (icon: String, text: String, ink: Color)
+        switch level {
+        case .ok: look = ("checkmark.circle", trkey("Normal"), .calmInk)
+        case .warm: look = ("exclamationmark.triangle", trkey("Warm"), .slowInk)
+        case .hot: look = ("exclamationmark.octagon", trkey("Hot"), .warnInk)
+        }
+        return HStack(spacing: 4) {
+            Image(systemName: look.icon).accessibilityHidden(true)
+            Text(tr(look.text)).font(.caption.bold())
+        }
+        .foregroundStyle(look.ink)
+    }
+
+    private func fanCard(_ fan: FanReading, of count: Int) -> some View {
+        let name = count == 1 ? tr("Fan") : tr("Fan %d", fan.index + 1)
+        let stopped = fan.rpm < 1
+        return cardStyle(VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Image(systemName: "fan").foregroundStyle(.secondary).accessibilityHidden(true)
+                Text(name).fontWeight(.semibold)
+                if fan.manual {
+                    Label(tr("Not automatic"), systemImage: "hand.raised")
+                        .font(.caption.bold()).foregroundStyle(Color.slowInk)
+                        .help(tr("The fan is not in automatic mode: an app such as a fan controller may be setting its speed. macOS does not control it until that is switched off."))
+                }
+                Spacer()
+                Text(stopped ? tr("Stopped") : tr("%d rpm", Int(fan.rpm.rounded()))).font(.title3.bold()).monospacedDigit()
+            }
+            ProgressView(value: min(max(fan.rpm / fan.maxRPM, 0), 1))
+                .accessibilityLabel(name)
+                .accessibilityValue(stopped ? tr("Stopped") : tr("%d rpm", Int(fan.rpm.rounded())))
+            HStack {
+                Text(tr("Range: %d to %d rpm", Int(fan.minRPM.rounded()), Int(fan.maxRPM.rounded()))).font(.caption).foregroundStyle(.secondary)
+                if fan.manual, let target = fan.targetRPM {
+                    Text(tr("Target: %d rpm", Int(target.rounded()))).font(.caption).foregroundStyle(.secondary)
+                }
+            }
+        })
+    }
+
+    private func groupCard(_ g: SensorGroupSummary) -> some View {
+        cardStyle(VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 8) {
+                Text(tr(g.group.title)).fontWeight(.semibold)
+                Text(trPlural("sensors", g.sensors.count)).font(.caption).foregroundStyle(.secondary)
+                Spacer()
+                levelLabel(g.level)
+                Text(tempText(g.hottest)).font(.title3.bold()).monospacedDigit()
+            }
+            .accessibilityElement(children: .combine)
+            if model.showAllSensors {
+                ForEach(g.sensors) { sensor in
+                    HStack {
+                        Text(sensor.name).font(.caption.monospaced()).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+                        Spacer()
+                        Text(tempText(sensor.celsius)).font(.caption).monospacedDigit()
+                    }
+                    .padding(.leading, 12)
+                    .accessibilityElement(children: .combine)
+                }
+            }
+        })
+    }
+
+    private func emptyNote(_ text: String) -> some View {
+        cardStyle(Label(text, systemImage: "info.circle").font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true))
+    }
+
+    private var fansView: some View {
+        VStack(spacing: 0) {
+            InfoBanner(summary: tr("Read only: fan speed and temperatures are shown here; this app does not change them."),
+                       details: tr("Read only: this app shows what the sensors report and does not change the fan speed. macOS runs the fans itself. Setting a fan's speed needs administrator rights, and this app asks for none. Apple does not publish safe temperature limits, so the colors are rough guides; the Thermal state reading above shows when macOS is actually slowing the chip down. A few sensors report fixed or impossible values and are left out."),
+                       open: model.openBanners.contains(.fans), toggle: { model.toggleBanner(.fans) }) { EmptyView() }
+            if let t = model.thermal {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(tr("Fans")).font(.headline).padding(.top, 2)
+                        if !t.smcAvailable {
+                            emptyNote(tr("Could not read the fan sensor on this Mac."))
+                        } else if t.fans.isEmpty {
+                            emptyNote(t.fanCount == 0 ? tr("This Mac reports no fan. Some models, such as the MacBook Air, are built without one.")
+                                                      : tr("The fans did not answer, so none are shown."))
+                        } else {
+                            ForEach(t.fans) { fanCard($0, of: t.fans.count) }
+                        }
+                        Text(tr("Temperatures")).font(.headline).padding(.top, 10)
+                        if t.summaries.isEmpty {
+                            emptyNote(tr("No temperature sensors answered on this Mac."))
+                        } else {
+                            Text(tr("The hottest reading in each group."))
+                                .font(.caption).foregroundStyle(.secondary)
+                            ForEach(t.summaries) { groupCard($0) }
+                        }
+                    }
+                    .padding(.horizontal, 16).padding(.bottom, 8)
+                }
+            } else {
+                Text(tr("Reading sensors…")).foregroundStyle(.secondary).frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            HStack {
+                Toggle(tr("Show every sensor"), isOn: $model.showAllSensors).toggleStyle(.checkbox)
+                Spacer()
+                Text(tr("Updated every 5 seconds. Nothing is changed here.")).font(.caption).foregroundStyle(.secondary)
+                Button(tr("Refresh")) { model.refreshThermal() }.buttonStyle(.link)
+            }
+            .padding(.horizontal, 16).padding(.vertical, 8)
+        }
+    }
+
+    // MARK: battery history
+
+    private func rateText(_ perHour: Double) -> String {
+        tr("%@%% per hour", String(format: perHour == 0 ? "%.0f" : (perHour < 1 ? "%.2f" : "%.1f"), locale: L10n.locale, perHour))
+    }
+
+    /// Hours as a person reads them: minutes, hours and minutes, or days.
+    private func spanText(_ hours: Double) -> String {
+        if hours >= 48 { return tr("%.1f days", hours / 24) }
+        let minutes = Int((hours * 60).rounded())
+        return minutes >= 60 && minutes % 60 == 0 ? tr("%d h", minutes / 60) : duration(minutes)
+    }
+
+    private func shortSpan(_ seconds: Double) -> String { seconds < 60 ? tr("%d s", Int(seconds.rounded())) : spanText(seconds / 3600) }
+
+    private func stamp(_ d: Date) -> String { d.formatted(.dateTime.day().month(.abbreviated).hour().minute().locale(L10n.locale)) }
+    private func clock(_ d: Date) -> String { d.formatted(.dateTime.hour().minute().locale(L10n.locale)) }
+
+    private func drainCard(awake: Bool, _ summary: DrainSummary?) -> some View {
+        cardStyle(VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                Image(systemName: awake ? "sun.max" : "moon.zzz").foregroundStyle(.secondary).accessibilityHidden(true)
+                Text((awake ? tr("Awake, on battery") : tr("Asleep, on battery")).uppercased(with: L10n.locale)).font(.caption2.bold()).foregroundStyle(.secondary)
+            }
+            if let m = summary {
+                Text(rateText(m.perHour)).font(.title2.bold()).monospacedDigit()
+                Text(m.hoursFromFull.map { tr("At this rate a full battery would last about %@.", spanText($0)) } ?? tr("No battery was lost in these sessions."))
+                    .font(.callout).fixedSize(horizontal: false, vertical: true)
+                Text(trPlural("power sessions", m.sessions, spanText(m.hours))).font(.caption).foregroundStyle(.secondary)
+                if !awake && m.briefWakes > 0 {
+                    Text(trPlural("brief wakes", m.briefWakes, shortSpan(m.briefWakeSeconds)) + (m.briefWakes >= 3
+                         ? " " + tr("That is about every %@.", duration(max(Int((m.hours * 60 / Double(m.briefWakes)).rounded()), 1))) : ""))
+                        .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                }
+            } else {
+                Text("—").font(.title2.bold())
+                Text(tr("Nothing measured yet: no stretch of at least 5 minutes on battery.")).font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        })
+        .accessibilityElement(children: .combine)
+    }
+
+    private func powerChart(_ h: PowerHistory) -> some View {
+        Chart {
+            ForEach(h.sessions.filter { $0.state == .asleep }) { s in
+                RectangleMark(xStart: .value(tr("From"), s.start), xEnd: .value(tr("To"), s.end), yStart: .value("0", 0), yEnd: .value("100", 100))
+                    .foregroundStyle(Color.protInk.opacity(0.14))
+            }
+            ForEach(h.points) { p in
+                LineMark(x: .value(tr("Time"), p.date), y: .value(tr("Battery"), p.percent), series: .value("run", p.run))
+                    .foregroundStyle(by: .value(tr("Power"), p.onAC ? tr("Plugged in") : tr("On battery")))
+            }
+        }
+        .chartYScale(domain: 0...100)
+        .chartYAxis {
+            AxisMarks(values: [0, 25, 50, 75, 100]) { v in
+                AxisGridLine()
+                AxisValueLabel(anchor: .leading) { if let n = v.as(Int.self) { Text("\(n)%") } }
+            }
+        }
+        .chartXAxis {
+            AxisMarks(values: .automatic(desiredCount: 6)) { _ in
+                AxisGridLine()
+                AxisTick()
+                AxisValueLabel(format: .dateTime.month(.abbreviated).day().locale(L10n.locale), anchor: .topLeading)
+            }
+        }
+        .chartForegroundStyleScale([tr("On battery"): Color.primary, tr("Plugged in"): Color.calmInk])
+        .chartLegend(position: .top, alignment: .leading)
+        .environment(\.locale, L10n.locale)
+        .frame(height: 170)
+        .accessibilityLabel(tr("Battery percentage over time, with the periods asleep shaded"))
+    }
+
+    private func sessionChip(_ s: PowerSession) -> some View {
+        let awake = s.state == .awake
+        return HStack(spacing: 4) {
+            Image(systemName: awake ? "sun.max" : "moon.zzz").font(.system(size: 10, weight: .bold)).accessibilityHidden(true)
+            Text(awake ? tr("Awake") : tr("Asleep")).font(.caption.bold())
+        }
+        .foregroundStyle(awake ? Color.neuInk : Color.protInk)
+        .padding(.horizontal, 9).padding(.vertical, 2)
+        .background(Capsule().fill(awake ? Color.neuBg : Color.protBg))
+        .frame(width: 88, alignment: .leading)
+    }
+
+    private func sessionRow(_ s: PowerSession) -> some View {
+        let sameDay = Calendar.current.isDate(s.start, inSameDayAs: s.end)
+        let range = tr("%@ – %@", stamp(s.start), s.ongoing ? tr("now") : (sameDay ? clock(s.end) : stamp(s.end)))
+        var parts = [spanText(s.hours)]
+        if let why = s.startedBy { parts.append(tr(why)) }
+        if s.state == .asleep && s.briefWakes > 0 { parts.append(trPlural("wakes", s.briefWakes)) }
+        let drain: String
+        if let r = s.drainPerHour { drain = (s.rough ? "~" : "") + rateText(r) }
+        else if s.pluggedIn { drain = tr("Plugged in") }
+        else if (s.points ?? 0) < 0 { drain = tr("Charged in between") }
+        else if s.hours < PowerSession.minHours { drain = tr("Too short") }
+        else { drain = "—" }
+        let level = (s.startPercent != nil && s.endPercent != nil) ? tr("%d%% → %d%%", s.startPercent!, s.endPercent!) : "—"
+        return cardStyle(HStack(spacing: 12) {
+            sessionChip(s)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(range).font(.callout.weight(.semibold)).lineLimit(1).truncationMode(.tail)
+                Text(parts.joined(separator: " · ") + (s.beginsBeforeLog ? " · " + tr("Longer than shown") : ""))
+                    .font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                    .help(s.beginsBeforeLog ? tr("Longer than shown: the log starts in the middle of it.") : "")
+            }
+            Spacer(minLength: 8)
+            VStack(alignment: .trailing, spacing: 1) {
+                Text(drain).font(.callout.weight(.semibold)).monospacedDigit()
+                    .help(s.rough && s.drainPerHour != nil ? tr("Rough: the battery changed by only %d points, and it shows whole percent.", s.points ?? 0) : "")
+                Text(level).font(.caption).foregroundStyle(.secondary).monospacedDigit()
+            }
+        })
+        .padding(.vertical, 0)
+        .accessibilityElement(children: .combine)
+    }
+
+    private var batteryView: some View {
+        VStack(spacing: 0) {
+            InfoBanner(summary: tr("Read only: battery use while the Mac is awake and asleep, from macOS's own power log."),
+                       details: tr("Read only: this reads the power log that macOS keeps itself (about the last week), so it also shows nights from before this tab existed, and nothing runs in the background to collect it. A session is the time from a wake to the next sleep, or from a sleep to the next wake; a sleep includes the short moments when the Mac wakes by itself for maintenance. Drain is the change in battery percentage divided by the hours, counted only for sessions that were on battery from start to end. The battery shows whole percent, so short sessions are rough. Plugging in between two log lines cannot be seen; a rise in charge is, and that session is left out."),
+                       open: model.openBanners.contains(.battery), toggle: { model.toggleBanner(.battery) }) { EmptyView() }
+            if let h = model.power, h.logRead, !h.sessions.isEmpty {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(alignment: .top, spacing: 12) {
+                            drainCard(awake: true, h.awake)
+                            drainCard(awake: false, h.asleep)
+                        }
+                        if let a = h.awake, let z = h.asleep, a.points >= 3, z.points >= 3, z.perHour > 0, a.perHour / z.perHour >= 2 {
+                            Label(trPlural("times slower", Int((a.perHour / z.perHour).rounded())), systemImage: "moon.zzz")
+                                .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                        }
+                        Text(tr("Battery level")).font(.headline).padding(.top, 10)
+                        powerChart(h)
+                        Text(tr("Shaded: the Mac was asleep.")).font(.caption).foregroundStyle(.secondary)
+                        Text(tr("Sessions, newest first")).font(.headline).padding(.top, 10)
+                        ForEach(Array(h.sessions.reversed().prefix(300))) { sessionRow($0) }
+                    }
+                    .padding(.horizontal, 16).padding(.bottom, 8)
+                }
+            } else {
+                Text(batteryEmptyText)
+                    .foregroundStyle(.secondary).multilineTextAlignment(.center).padding(.horizontal, 24)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            HStack {
+                Text(tr("Sessions: %d. From macOS's power log, about the last week. Nothing is changed here.", model.power?.sessions.count ?? 0))
+                    .font(.caption).foregroundStyle(.secondary)
+                Spacer()
+                if model.powerLoading { ProgressView().controlSize(.small) }
+                Button(tr("Refresh")) { model.refreshPower() }.buttonStyle(.link)
+            }
+            .padding(.horizontal, 16).padding(.vertical, 8)
+        }
+    }
+
+    private var batteryEmptyText: String {
+        if model.system != nil && model.system?.battery == nil { return tr("This Mac has no battery.") }
+        guard let h = model.power else { return tr("Reading the power log (a few seconds)…") }
+        if !h.logRead { return tr("macOS did not give its power log (the read failed or timed out), so there is no history to show.") }
+        return tr("The power log holds no sleep or wake yet.")
     }
 
     // MARK: storage

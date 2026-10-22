@@ -16,3 +16,17 @@
 "for minutes.other" = "%d minutes";
 
 "Normal job" = "Normal";
+
+/* Fans tab */
+"sensors.one" = "%d sensor";
+"sensors.other" = "%d sensors";
+
+/* Battery tab */
+"power sessions.one" = "%d session, %@ in all";
+"power sessions.other" = "%d sessions, %@ in all";
+"brief wakes.one" = "Woke by itself %d time for a moment, %@ awake in all.";
+"brief wakes.other" = "Woke by itself %d times for a moment, %@ awake in all.";
+"wakes.one" = "%d brief wake";
+"wakes.other" = "%d brief wakes";
+"times slower.one" = "Asleep, the battery drains about %d time slower than awake.";
+"times slower.other" = "Asleep, the battery drains about %d times slower than awake.";

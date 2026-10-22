@@ -26,12 +26,16 @@ expect "start" "accessory" "starts as a menu-bar-only app"
 expect "Startup tab loaded" "regular.*refreshTimer=true, engineBuildsRows=true" "window open: Dock icon, refreshing, rows being built"
 expect "Storage tab loaded" "regular.*refreshTimer=true, engineBuildsRows=true" "Storage tab opens and reads the Library (read only)"
 expect "Drivers tab loaded" "regular.*refreshTimer=true, engineBuildsRows=true" "Drivers tab opens and lists the extensions (read only)"
+expect "Fans tab loaded" "regular.*refreshTimer=true, engineBuildsRows=true, .*thermalRead=true" "Fans tab opens and reads the fans and sensors (read only)"
+expect "Battery tab loaded" "regular.*refreshTimer=true, engineBuildsRows=true, .*powerRead=true" "Battery tab opens and reads the power log (read only)"
 expect "window minimized" "regular.*minimized=true.*refreshTimer=false, engineBuildsRows=false" "minimized: keeps its Dock icon, stops all work"
 expect "window restored" "regular.*minimized=false.*refreshTimer=true, engineBuildsRows=true" "restored: work resumes"
 expect "window closed" "accessory.*refreshTimer=false, engineBuildsRows=false" "closed: back to menu-bar-only"
 grep -E "SELFTEST Startup tab loaded" "$LOG" | grep -oE "startupItems=[0-9]+" | sed 's/^/  info /'
 grep -E "SELFTEST Storage tab loaded" "$LOG" | grep -oE "storageItems=[0-9]+" | sed 's/^/  info /'
 grep -E "SELFTEST Drivers tab loaded" "$LOG" | grep -oE "driverItems=[0-9]+" | sed 's/^/  info /'
+grep -E "SELFTEST Fans tab loaded" "$LOG" | grep -oE "thermal(Sensors|Fans)=-?[0-9]+" | sed 's/^/  info /'
+grep -E "SELFTEST Battery tab loaded" "$LOG" | grep -oE "power(LogRead|Sessions)=[a-z0-9-]+" | sed 's/^/  info /'
 [ $FAIL -eq 0 ]
 
 }
