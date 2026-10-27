@@ -227,7 +227,7 @@ enum StartupControlAction {
     static func setEnabled(label: String, plistPath: String, enable: Bool,
                            agentsDir: String = StartupReader.userAgentsDir, uid: uid_t = getuid()) throws {
         // 1. the label is plain text
-        guard label.range(of: #"^[A-Za-z0-9._@+-]{1,200}$"#, options: .regularExpression) != nil else { throw StartupError.notAllowed(trkey("That item cannot be changed here.")) }
+        guard label.range(of: #"\A[A-Za-z0-9._@+-]{1,200}\z"#, options: .regularExpression) != nil else { throw StartupError.notAllowed(trkey("That item cannot be changed here.")) }
         // 2. never macOS itself, security tools, or this app
         if label.hasPrefix("com.apple.") || StartupReader.isSecurityTool(label) || label == (Bundle.main.bundleIdentifier ?? "com.alexxxela.bgoptimizer") {
             throw StartupError.notAllowed(trkey("That item cannot be changed here."))

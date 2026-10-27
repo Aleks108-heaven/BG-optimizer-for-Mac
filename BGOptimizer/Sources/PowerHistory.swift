@@ -83,6 +83,13 @@ struct PowerPoint: Identifiable, Equatable {
     var run: Int                // consecutive points with the same power source share a run, so the chart does not join across a gap
 }
 
+/// Two neighbouring readings with a different power source: the plug or unplug happened somewhere between them, and the log does not say when.
+struct PowerGap: Identifiable, Equatable {
+    var id: Int                 // the index of the reading before the gap
+    var from: PowerPoint
+    var to: PowerPoint
+}
+
 struct PowerHistory: Equatable {
     var sessions: [PowerSession] = []   // oldest first
     var points: [PowerPoint] = []
@@ -249,6 +256,19 @@ enum PowerAnalysis {
             out.append(PowerPoint(id: i, date: p.0, percent: p.1, onAC: p.2, run: run))
         }
         return out
+    }
+
+    /// Where the chart's line is cut because the power source changed. The chart joins each of these with a dashed line, so the
+    /// stretch with no reading (here the Mac was awake for hours without a log line) is not mistaken for missing data or a bug.
+    static func gaps(in points: [PowerPoint]) -> [PowerGap] {
+        zip(points, points.dropFirst()).filter { $0.run != $1.run }.map { PowerGap(id: $0.id, from: $0, to: $1) }
+    }
+
+    /// The bottom of the chart: 0, unless the battery never went below 50%, when 50 or 75 gives the line the room instead of leaving half the chart empty.
+    /// The axis labels always say which range is shown.
+    static func chartFloor(_ points: [PowerPoint]) -> Int {
+        guard let lowest = points.map({ $0.percent }).min(), lowest >= 50 else { return 0 }
+        return lowest / 25 * 25
     }
 
     static func history(events: [PowerEvent], now: (date: Date, percent: Int, onAC: Bool)?, logRead: Bool) -> PowerHistory {

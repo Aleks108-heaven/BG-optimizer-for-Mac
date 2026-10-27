@@ -307,8 +307,6 @@
 "Reading drivers (a few seconds)…" = "Читаю драйвери (кілька секунд)…";
 "No third-party drivers found." = "Сторонніх драйверів не знайдено.";
 "No driver matches that name." = "Жоден драйвер не відповідає цій назві.";
-"Drivers: %d. Nothing is changed here." = "Драйверів: %d. Тут нічого не змінюється.";
-"Read only: this app does not remove drivers, because removing one needs an administrator and can break the software that uses it. “Probably not in use” means it is switched off and no app from the same maker is installed. Only the maker can say whether a driver is out of date, so compare the version with the maker's website. To remove one, use the maker's uninstaller; System Settings can switch an extension off. Kernel extensions are the old kind of driver, and Apple silicon Macs load them only with reduced security." = "Лише перегляд: ця програма не видаляє драйвери, бо для цього потрібні права адміністратора, а видалення може зламати програму, яка їх використовує. «Ймовірно не використовується» означає, що драйвер вимкнено і жодної програми від того самого виробника не встановлено. Чи застарів драйвер, може сказати лише виробник, тож порівняйте версію з сайтом виробника. Щоб видалити драйвер, скористайтеся програмою видалення від виробника; Системні параметри можуть лише вимкнути розширення. Розширення ядра — старий тип драйверів; Mac на Apple silicon завантажують їх лише зі зниженим рівнем безпеки.";
 "macOS did not list the system extensions (the read failed or timed out), so some drivers may be missing here." = "macOS не показала системні розширення (читання не вдалося або тривало надто довго), тож деяких драйверів тут може бракувати.";
 "System extension" = "Системне розширення";
 "Kernel extension" = "Розширення ядра";
@@ -334,7 +332,6 @@
 
 /* Collapsible explanations, status strip */
 "Switch your own login items off or on here. Nothing that is running gets stopped." = "Тут можна вимкнути або ввімкнути власні елементи автозапуску. Те, що вже працює, не зупиняється.";
-"Read only: drivers are listed here, never removed by this app." = "Лише перегляд: драйвери тут показано, але ця програма їх не видаляє.";
 "Nothing is deleted automatically: you choose each item, and the Trash can undo it." = "Нічого не видаляється автоматично: ви самі обираєте кожен елемент, а Кошик дозволяє скасувати дію.";
 "More" = "Докладніше";
 "Less" = "Згорнути";
@@ -398,7 +395,9 @@
 "That is about every %@." = "Це приблизно раз на %@.";
 "Nothing measured yet: no stretch of at least 5 minutes on battery." = "Поки що нічого не виміряно: немає проміжку від 5 хвилин роботи від акумулятора.";
 "Battery percentage over time, with the periods asleep shaded" = "Відсоток заряду з часом; періоди сну затінено";
+"No reading" = "Немає запису";
 "Shaded: the Mac was asleep." = "Затінено: Mac був у режимі сну.";
+"Shaded: the Mac was asleep. Dashed: plugged in or unplugged between two readings; the log does not say when." = "Затінено: Mac був у режимі сну. Пунктир: між двома записами Mac підключили до мережі або від’єднали; журнал не каже, коли саме.";
 "Sessions, newest first" = "Сеанси, спочатку найновіші";
 "Charged in between" = "Заряджався в проміжку";
 "Too short" = "Занадто коротко";
@@ -430,3 +429,29 @@
 "times slower.few" = "У режимі сну акумулятор розряджається приблизно в %d рази повільніше, ніж в активному.";
 "times slower.many" = "У режимі сну акумулятор розряджається приблизно в %d разів повільніше, ніж в активному.";
 "%d h" = "%d год";
+"A kernel extension is gone after the next restart." = "Розширення ядра зникне після наступного перезапуску.";
+"Administrator actions" = "Дії адміністратора";
+"Asks for your password" = "Запитує пароль";
+"BG Optimizer wants to change whether “%@” starts by itself." = "BG Optimizer хоче змінити, чи запускається «%@» сам.";
+"BG Optimizer wants to move the driver “%@” out of the way." = "BG Optimizer хоче прибрати драйвер «%@» з дороги.";
+"Could not remove “%@”: %@" = "Не вдалося прибрати «%@»: %@";
+"Drivers are listed here. Removing one needs Administrator actions (Settings) and your password." = "Тут показано драйвери. Щоб прибрати один, потрібні «Дії адміністратора» (Параметри) і ваш пароль.";
+"Drivers: %d. Nothing is changed unless you remove one." = "Драйверів: %d. Нічого не змінюється, доки ви не приберете один.";
+"It is moved, not deleted, to a backup folder (%@), so you can move it back. Software that still needs it may stop working." = "Його переміщено, а не видалено, у резервну теку (%@), тож можна повернути назад. Програми, яким він ще потрібен, можуть перестати працювати.";
+"Lets Drivers and Startup offer changes that need your Mac password. macOS asks for it each time; this app never sees or keeps it." = "Дає змогу в «Драйверах» і «Автозапуску» пропонувати зміни, що потребують пароля Mac. macOS питає його щоразу; застосунок його не бачить і не зберігає.";
+"Moved “%@” to %@." = "«%@» переміщено до %@.";
+"No password was given in time, so nothing changed." = "Пароль не ввели вчасно, тож нічого не змінилося.";
+"Nothing changed: the password was not given, or macOS refused." = "Нічого не змінилося: пароль не ввели або macOS відмовила.";
+"Open System Settings for %@" = "Відкрити Системні параметри для %@";
+"Open System Settings: Login Items & Extensions" = "Відкрити Системні параметри: Елементи входу й розширення";
+"Remove %@" = "Прибрати %@";
+"Remove (asks for your password)" = "Прибрати (запитає пароль)";
+"Remove “%@”?" = "Прибрати «%@»?";
+"Remove… (asks for your password)" = "Прибрати… (запитає пароль)";
+"Show %@ in Finder" = "Показати %@ у Finder";
+"Show in Finder" = "Показати у Finder";
+"Start “%@” at startup (asks for your password)" = "Запускати «%@» під час старту (запитає пароль)";
+"That driver cannot be removed here." = "Цей драйвер не можна прибрати тут.";
+"This app lists drivers and, only if you switch on Administrator actions in Settings, can move a helper tool or kernel extension that looks unused into a backup folder. macOS asks for your password each time; the app never sees it. “Probably not in use” means it is switched off and no app from the same maker is installed. A system extension cannot be removed by an app: use the gear button to open System Settings, or the maker's uninstaller. Only the maker can say whether a driver is out of date, so compare the version with the maker's website. Kernel extensions are the old kind of driver, and Apple silicon Macs load them only with reduced security." = "Цей застосунок показує драйвери і, лише якщо ви ввімкнете «Дії адміністратора» в Параметрах, може перемістити допоміжний інструмент або розширення ядра, що виглядає невикористаним, у резервну теку. macOS питає пароль щоразу; застосунок його не бачить. «Ймовірно не використовується» означає, що драйвер вимкнено і жодного застосунку того самого виробника не встановлено. Системне розширення застосунок прибрати не може: відкрийте Системні параметри кнопкою-шестернею або скористайтеся деінсталятором виробника. Лише виробник скаже, чи драйвер застарів, тож порівняйте версію з його сайтом. Розширення ядра — старий різновид драйверів; на Mac із Apple silicon їх завантажують лише зі зниженим захистом.";
+"“%@” will not start at the next start. What is running now keeps running." = "«%@» не запуститься під час наступного старту. Те, що працює зараз, працює далі.";
+"“%@” will start again at the next start." = "«%@» знову запуститься під час наступного старту.";

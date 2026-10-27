@@ -198,8 +198,10 @@ Protected (cannot be slowed, even by hand).
 
 **What macOS allows.** An ordinary app can switch only agents in the user's own `~/Library/LaunchAgents`
 (`launchctl disable gui/<uid>/<label>`, no password, survives restarts). System-wide agents and daemons need an
-administrator, and login-item apps are managed only in System Settings. The app does not ask for a password or install a
-privileged helper, because that would add a much larger security risk than the feature is worth.
+administrator, and login-item apps are managed only in System Settings. The app does not install a privileged helper, because
+that would add a much larger security risk than the feature is worth. **Later change (see SECURITY-REVIEW.md S-32):** with
+"Administrator actions" switched on in Settings (off by default), a third-party launch daemon gets a switch too; macOS asks for
+your password for each change and the app never sees it.
 
 **Design.** A Startup tab next to Processes and Log: every item with its start trigger, whether it is running, whether it
 is on, and one of three controls: a switch (the user's own agents), "Settings…" (everything else), or a lock (security
@@ -265,6 +267,14 @@ version, or for a helper tool the day it was installed, and says in the tab that
 **Why not remove them.** It needs an administrator, so the app would need a privileged helper, which is the weakness the tab looks
 for. `systemextensionsctl uninstall` needs SIP off. A wrong guess can break security software. The tab names the maker's uninstaller
 and leaves the decision to you.
+
+**Later change (2026-10-27, the user asked for it; SECURITY-REVIEW.md S-32 to S-40).** Still no privileged helper. With
+"Administrator actions" on in Settings, a helper tool or kernel extension marked Probably not in use or Maker's app not found gets
+a Remove button: a confirmation, then macOS's own password dialog (once per change, never remembered, the app never sees the
+password), then the file is **moved** to `/Library/BG Optimizer Removed Drivers/<time>`, not deleted. A system extension never gets
+Remove (an app cannot remove one); it gets a gear button that opens System Settings. Every row gets Show in Finder. The first
+version of this was reviewed against `security-checklist.md` and three weaknesses were fixed before it was kept (S-33 to S-35). Not
+run for real yet (S-40).
 
 **Not built, on purpose:** any removal; a network lookup of versions; guessing a maker from a plain name.
 **Not verified:** the tab clicked in the real window; reading a real kernel extension (the development Mac has none; stand-in folders

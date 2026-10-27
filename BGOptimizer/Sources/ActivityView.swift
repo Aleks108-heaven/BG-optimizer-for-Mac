@@ -15,6 +15,8 @@ struct ActivityActions {
     var openLoginSettings: () -> Void           // System Settings > Login Items & Extensions
     var trashStorage: (StorageItem) -> Void     // move one item of the Storage tab to the Trash (you confirmed)
     var revealStorage: (StorageItem) -> Void    // show it in Finder
+    var removeDriver: (DriverItem) -> Void      // move a driver file to the backup folder, after you confirmed and gave your password
+    var revealDriver: (DriverItem) -> Void      // show it in Finder
 }
 
 /// State of the Activity window. The engine feeds `rows`; the Mac's own status is read here every 5 seconds while the window is open.
@@ -52,6 +54,8 @@ final class ActivityModel: ObservableObject {
     @Published var storageLoading = false
     @Published var storageSort = [KeyPathComparator(\StorageItem.sortBytes, order: .reverse)]
     @Published var hideSmall = true             // hide caches and logs under 1 MB (leftovers are always shown)
+    @Published var adminActions = false          // Settings > Administrator actions
+    @Published var pendingDriverRemoval: DriverItem?   // a driver waiting for your confirmation before it is moved away
     @Published var pendingTrash: StorageItem?   // an item waiting for your confirmation before it goes to the Trash
     @Published var notice: String?              // result of your last action, shown for a few seconds
     @Published var noticeIsError = false
@@ -265,6 +269,14 @@ private struct StatusChip: View {
     }
 }
 
+private extension View {
+    /// A Table fills the room under its last row with empty striped rows, which look like rows that failed to load. With few rows
+    /// the stripes are off; once the rows fill the window they are back, because they help the eye follow a wide row.
+    @ViewBuilder func stripesOnlyWhenFull(_ rows: Int) -> some View {
+        if #available(macOS 14.0, *) { alternatingRowBackgrounds(rows < 12 ? .disabled : .enabled) } else { self }
+    }
+}
+
 private enum Level { case ok, attention, alert }
 
 private struct Tile: View {
@@ -299,7 +311,8 @@ private struct Tile: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                 if let extra = extra {
                     Text(extra).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .multilineTextAlignment(.trailing)
+                        .frame(maxWidth: .infinity, alignment: .trailing)
                 }
             }
         }
@@ -430,6 +443,14 @@ struct ActivityView: View {
             Button(tr("Cancel"), role: .cancel) { model.pendingTrash = nil }
         } message: { item in
             Text(trashMessage(item))
+        }
+        .confirmationDialog(tr("Remove “%@”?", model.pendingDriverRemoval?.name ?? ""),
+                            isPresented: Binding(get: { model.pendingDriverRemoval != nil }, set: { if !$0 { model.pendingDriverRemoval = nil } }),
+                            titleVisibility: .visible, presenting: model.pendingDriverRemoval) { item in
+            Button(tr("Remove (asks for your password)"), role: .destructive) { actions.removeDriver(item); model.pendingDriverRemoval = nil }
+            Button(tr("Cancel"), role: .cancel) { model.pendingDriverRemoval = nil }
+        } message: { item in
+            Text(removeDriverMessage(item))
         }
         .confirmationDialog(tr("Clear the activity log?"), isPresented: $model.askClearLog, titleVisibility: .visible) {
             Button(tr("Clear log"), role: .destructive) { actions.clearLog() }
@@ -638,7 +659,7 @@ struct ActivityView: View {
                     }
                     .width(min: 100, ideal: 110)
                     TableColumn(tr("Memory"), value: \.memBytes) { row in
-                        Text(row.memBytes == 0 ? "—" : sizeText(Int64(row.memBytes))).monospacedDigit().foregroundStyle(.secondary)
+                        Text(row.memBytes == 0 ? "—" : sizeText(Int64(row.memBytes))).monospacedDigit()
                     }
                     .width(min: 70, ideal: 85)
                     TableColumn(tr("Status"), value: \.statusRank) { row in StatusChip(status: row.status) }
@@ -649,6 +670,7 @@ struct ActivityView: View {
                     TableColumn("") { row in actionMenu(row) }
                         .width(34)
                 }
+                .stripesOnlyWhenFull(model.filtered.count)
             }
             footer
         }
@@ -724,6 +746,11 @@ struct ActivityView: View {
             Toggle("", isOn: Binding(get: { item.enabled ?? true }, set: { actions.setStartup(item, $0) }))
                 .toggleStyle(.switch).labelsHidden()
                 .accessibilityLabel(tr("Start “%@” at login", item.name))
+        case .settingsOnly where item.kind == .systemDaemon && model.adminActions && item.plistPath != nil && item.enabled != nil:
+            Toggle("", isOn: Binding(get: { item.enabled ?? true }, set: { actions.setStartup(item, $0) }))
+                .toggleStyle(.switch).labelsHidden()
+                .help(tr("Asks for your password"))
+                .accessibilityLabel(tr("Start “%@” at startup (asks for your password)", item.name))
         case .settingsOnly(let why):
             HStack(spacing: 8) {
                 Text(item.enabled.map { $0 ? tr("On") : tr("Off") } ?? "—").font(.caption.bold()).foregroundStyle(.secondary).frame(minWidth: 26, alignment: .leading)
@@ -771,6 +798,7 @@ struct ActivityView: View {
                     TableColumn(tr("Start at login")) { item in startupControl(item) }
                         .width(min: 120, ideal: 160)
                 }
+                .stripesOnlyWhenFull(model.filteredStartup.count)
             }
             HStack {
                 Text(tr("Startup items: %d. Switching one off never stops what is running.", model.startup.count))
@@ -816,14 +844,36 @@ struct ActivityView: View {
         .background(Capsule().fill(look.bg))
     }
 
+    private func removeDriverMessage(_ item: DriverItem) -> String {
+        var text = tr("It is moved, not deleted, to a backup folder (%@), so you can move it back. Software that still needs it may stop working.", AdminActions.backupRoot)
+        if item.kind == .kernelExtension { text += " " + tr("A kernel extension is gone after the next restart.") }
+        return text
+    }
+
+    @ViewBuilder private func driverActions(_ item: DriverItem) -> some View {
+        HStack(spacing: 10) {
+            if item.path != nil {
+                Button { actions.revealDriver(item) } label: { Image(systemName: "magnifyingglass") }
+                    .buttonStyle(.borderless).help(tr("Show in Finder")).accessibilityLabel(tr("Show %@ in Finder", item.name))
+            } else {
+                Button(action: actions.openLoginSettings) { Image(systemName: "gearshape") }
+                    .buttonStyle(.borderless).help(tr("Open System Settings: Login Items & Extensions")).accessibilityLabel(tr("Open System Settings for %@", item.name))
+            }
+            if model.adminActions && AdminActions.canRemove(item) {
+                Button { model.pendingDriverRemoval = item } label: { Image(systemName: "trash") }
+                    .buttonStyle(.borderless).help(tr("Remove… (asks for your password)")).accessibilityLabel(tr("Remove %@", item.name))
+            }
+        }
+    }
+
     private func driverDetail(_ item: DriverItem) -> String {
         item.detailArg.map { tr(item.detail, $0) } ?? tr(item.detail)
     }
 
     private var driversView: some View {
         VStack(spacing: 0) {
-            InfoBanner(summary: tr("Read only: drivers are listed here, never removed by this app."),
-                       details: tr("Read only: this app does not remove drivers, because removing one needs an administrator and can break the software that uses it. “Probably not in use” means it is switched off and no app from the same maker is installed. Only the maker can say whether a driver is out of date, so compare the version with the maker's website. To remove one, use the maker's uninstaller; System Settings can switch an extension off. Kernel extensions are the old kind of driver, and Apple silicon Macs load them only with reduced security."),
+            InfoBanner(summary: tr("Drivers are listed here. Removing one needs Administrator actions (Settings) and your password."),
+                       details: tr("This app lists drivers and, only if you switch on Administrator actions in Settings, can move a helper tool or kernel extension that looks unused into a backup folder. macOS asks for your password each time; the app never sees it. “Probably not in use” means it is switched off and no app from the same maker is installed. A system extension cannot be removed by an app: use the gear button to open System Settings, or the maker's uninstaller. Only the maker can say whether a driver is out of date, so compare the version with the maker's website. Kernel extensions are the old kind of driver, and Apple silicon Macs load them only with reduced security."),
                        open: model.openBanners.contains(.drivers), toggle: { model.toggleBanner(.drivers) }) {
                 Button(tr("Open Login Items settings"), action: actions.openLoginSettings)
             }
@@ -858,10 +908,13 @@ struct ActivityView: View {
                     TableColumn(tr("Details")) { item in
                         Text(driverDetail(item)).font(.callout).foregroundStyle(.secondary).lineLimit(2).truncationMode(.tail).help(driverDetail(item))
                     }
+                    TableColumn("") { item in driverActions(item) }
+                        .width(62)
                 }
+                .stripesOnlyWhenFull(model.filteredDrivers.count)
             }
             HStack {
-                Text(tr("Drivers: %d. Nothing is changed here.", model.drivers.count))
+                Text(tr("Drivers: %d. Nothing is changed unless you remove one.", model.drivers.count))
                     .font(.caption).foregroundStyle(.secondary)
                 Spacer()
                 if model.driversLoading { ProgressView().controlSize(.small) }
@@ -1038,19 +1091,27 @@ struct ActivityView: View {
     }
 
     private func powerChart(_ h: PowerHistory) -> some View {
-        Chart {
+        let low = PowerAnalysis.chartFloor(h.points)
+        return Chart {
             ForEach(h.sessions.filter { $0.state == .asleep }) { s in
-                RectangleMark(xStart: .value(tr("From"), s.start), xEnd: .value(tr("To"), s.end), yStart: .value("0", 0), yEnd: .value("100", 100))
+                RectangleMark(xStart: .value(tr("From"), s.start), xEnd: .value(tr("To"), s.end), yStart: .value("low", low), yEnd: .value("100", 100))
                     .foregroundStyle(Color.protInk.opacity(0.14))
+            }
+            ForEach(PowerAnalysis.gaps(in: h.points)) { g in
+                ForEach([g.from, g.to]) { p in
+                    LineMark(x: .value(tr("Time"), p.date), y: .value(tr("Battery"), p.percent), series: .value("run", 1_000_000 + g.id))
+                        .foregroundStyle(by: .value(tr("Power"), tr("No reading")))
+                        .lineStyle(StrokeStyle(lineWidth: 2, dash: [5, 3]))
+                }
             }
             ForEach(h.points) { p in
                 LineMark(x: .value(tr("Time"), p.date), y: .value(tr("Battery"), p.percent), series: .value("run", p.run))
                     .foregroundStyle(by: .value(tr("Power"), p.onAC ? tr("Plugged in") : tr("On battery")))
             }
         }
-        .chartYScale(domain: 0...100)
+        .chartYScale(domain: low...100)
         .chartYAxis {
-            AxisMarks(values: [0, 25, 50, 75, 100]) { v in
+            AxisMarks(values: [0, 25, 50, 75, 100].filter { $0 >= low }) { v in
                 AxisGridLine()
                 AxisValueLabel(anchor: .leading) { if let n = v.as(Int.self) { Text("\(n)%") } }
             }
@@ -1062,7 +1123,7 @@ struct ActivityView: View {
                 AxisValueLabel(format: .dateTime.month(.abbreviated).day().locale(L10n.locale), anchor: .topLeading)
             }
         }
-        .chartForegroundStyleScale([tr("On battery"): Color.primary, tr("Plugged in"): Color.calmInk])
+        .chartForegroundStyleScale([tr("On battery"): Color.primary, tr("Plugged in"): Color.calmInk, tr("No reading"): Color.primary.opacity(0.55)])
         .chartLegend(position: .top, alignment: .leading)
         .environment(\.locale, L10n.locale)
         .frame(height: 170)
@@ -1131,7 +1192,8 @@ struct ActivityView: View {
                         }
                         Text(tr("Battery level")).font(.headline).padding(.top, 10)
                         powerChart(h)
-                        Text(tr("Shaded: the Mac was asleep.")).font(.caption).foregroundStyle(.secondary)
+                        Text(PowerAnalysis.gaps(in: h.points).isEmpty ? tr("Shaded: the Mac was asleep.") : tr("Shaded: the Mac was asleep. Dashed: plugged in or unplugged between two readings; the log does not say when."))
+                            .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                         Text(tr("Sessions, newest first")).font(.headline).padding(.top, 10)
                         ForEach(Array(h.sessions.reversed().prefix(300))) { sessionRow($0) }
                     }
@@ -1252,6 +1314,7 @@ struct ActivityView: View {
                     TableColumn("") { item in storageButtons(item) }
                         .width(56)
                 }
+                .stripesOnlyWhenFull(model.filteredStorage.count)
             }
             HStack {
                 Text(tr("Items: %d. Nothing is deleted automatically.", model.storage.count))

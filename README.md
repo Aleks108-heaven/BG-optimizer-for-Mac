@@ -168,9 +168,13 @@ is written to the log as `LOGIN`. Command line: `BGOptimizer --login on|off|stat
   list`), old kernel extensions in `/Library/Extensions`, and the root helper tools in `/Library/PrivilegedHelperTools`.
   Each row has a status: **Probably not in use** (switched off, and no app from the same maker is installed), **Maker's
   app not found**, Switched off, Waiting (for your approval, or to be removed at the next restart), Old type (a kernel
-  extension), Enabled or Installed. **It only reads.** Removing a driver needs an administrator (and
-  `systemextensionsctl uninstall` needs SIP switched off), so the app shows what it found and leaves the removal to the
-  maker's uninstaller. It does not decide that a driver is *out of date*: that needs the maker's list of versions, and
+  extension), Enabled or Installed. **By default it only reads.** Removing a driver needs an administrator (and
+  `systemextensionsctl uninstall` needs SIP switched off), so a system extension is left to System Settings (the gear button
+  opens it) or the maker's uninstaller. If you switch on **Administrator actions** in Settings (off by default), a helper
+  tool or kernel extension marked Probably not in use or Maker's app not found also gets a **Remove** button: you confirm,
+  macOS asks for your password (this app never sees it and asks again next time), and the file is **moved, not deleted**, to
+  `/Library/BG Optimizer Removed Drivers/<time>` so you can put it back. The same switch lets the Startup tab turn a
+  third-party launch daemon off or on. This has not yet been run with a real password (see SECURITY-REVIEW.md S-40). It does not decide that a driver is *out of date*: that needs the maker's list of versions, and
   this app never uses the network, so it shows the version or the date for you to compare. Apple's own items are never
   listed. "Maker's app not found" can be wrong for an app kept in an unusual place; "Enabled" is only a guess about
   *use* for a helper tool, because macOS does not say whether one is used.

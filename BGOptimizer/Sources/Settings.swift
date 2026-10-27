@@ -9,6 +9,7 @@ struct Settings: Codable, Equatable {
     var protectedApps: [String] = []
     var observeOnly = false          // report what would be slowed, change nothing
     var language: AppLanguage = .system
+    var adminActions = false         // allow the few changes that ask for your administrator password (remove a driver, switch a daemon)
 
     init() {}
 
@@ -20,6 +21,7 @@ struct Settings: Codable, Equatable {
         protectedApps = try c.decodeIfPresent([String].self, forKey: .protectedApps) ?? []
         observeOnly = try c.decodeIfPresent(Bool.self, forKey: .observeOnly) ?? false
         language = try c.decodeIfPresent(AppLanguage.self, forKey: .language) ?? .system
+        adminActions = try c.decodeIfPresent(Bool.self, forKey: .adminActions) ?? false
     }
 
     private static let key = "settings"

@@ -50,6 +50,11 @@ private struct GeneralTab: View {
                     Text(tr("Report what would be slowed in the log, but change nothing."))
                         .font(.caption).foregroundStyle(.secondary)
                 }
+                VStack(alignment: .leading, spacing: 2) {
+                    Toggle(tr("Administrator actions"), isOn: $model.settings.adminActions)
+                    Text(tr("Lets Drivers and Startup offer changes that need your Mac password. macOS asks for it each time; this app never sees or keeps it."))
+                        .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                }
                 LanguagePicker(model: model)
             }
             Section(tr("Sensitivity")) {
