@@ -33,7 +33,9 @@ struct DriverItem: Identifiable, Equatable {
     let status: DriverStatus
     let detail: String          // a translation key: why it has this status
     let detailArg: String?      // fills the %@ of the detail (the maker)
-    var id: String { "\(kind.rawValue)-\(identifier)" }
+    var path: String? = nil     // the file or folder on disk (kernel extensions and helper tools; a system extension has none)
+    var tag = ""                // makes the id unique when the same identifier is listed twice (an old version waiting to go, and the new one)
+    var id: String { "\(kind.rawValue)-\(identifier)" + (tag.isEmpty ? "" : "#\(tag)") }
     var kindRank: Int { kind.rawValue }
     var statusRank: Int { status.rawValue }
 }
@@ -191,7 +193,7 @@ enum DriverScanner {
             let name = plainText((d["CFBundleName"] as? String) ?? String(file.dropLast(5)))
             let version = (d["CFBundleShortVersionString"] as? String) ?? (d["CFBundleVersion"] as? String)
             items.append(DriverItem(name: name, identifier: id, kind: .kernelExtension, info: versionText(version) ?? modified(path),
-                                    status: v.status, detail: v.detail, detailArg: v.arg))
+                                    status: v.status, detail: v.detail, detailArg: v.arg, path: path))
         }
 
         for file in ((try? fm.contentsOfDirectory(atPath: helperDir)) ?? []).sorted() where !file.hasPrefix(".") && shown(file) {
@@ -199,10 +201,16 @@ enum DriverScanner {
             let id = StorageScanner.baseIdentifier(file)
             let v = classify(kind: .helperTool, state: nil, maker: id.map { maker($0) }, makerPresent: id.map { present($0) })
             items.append(DriverItem(name: file, identifier: file, kind: .helperTool, info: modified(helperDir + "/" + file),
-                                    status: v.status, detail: v.detail, detailArg: v.arg))
+                                    status: v.status, detail: v.detail, detailArg: v.arg, path: helperDir + "/" + file))
         }
 
-        return items.sorted { ($0.statusRank, $0.name.lowercased()) < ($1.statusRank, $1.name.lowercased()) }
+        var sorted = items.sorted { ($0.statusRank, $0.name.lowercased()) < ($1.statusRank, $1.name.lowercased()) }
+        var count: [String: Int] = [:]
+        for i in sorted.indices {                                   // the same identifier twice: the second one gets a tag, so every row has its own id
+            count[sorted[i].id, default: 0] += 1
+            if let n = count[sorted[i].id], n > 1 { sorted[i].tag = "\(n)" }
+        }
+        return sorted
     }
 
     /// The real Mac. Takes a second or two (systemextensionsctl and a look through the Applications folders): call it off the main thread.

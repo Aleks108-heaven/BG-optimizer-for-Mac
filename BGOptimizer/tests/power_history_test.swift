@@ -113,6 +113,11 @@ check(r("Maintenance Sleep") == nil && r("Sleep Service Back to Sleep") == nil &
 let pts = PowerAnalysis.points(from: [ev(0, .wake, 80), ev(1, .sleep, 78), ev(2, .wake, 78, ac: true), ev(3, .sleep, 90, ac: true), ev(4, .wake, 90, ac: false), ev(5, .sleep, nil)], now: now(6, 70))
 check(pts.map { $0.percent } == [80, 78, 78, 90, 90, 70], "chart: every reading, the line without a percentage skipped, now added")
 check(pts.map { $0.run } == [0, 0, 1, 1, 2, 2], "chart: a new run starts whenever the power source changes (no line across a plug-in)")
+let gp = PowerAnalysis.gaps(in: pts)
+check(gp.count == 2 && gp[0].from.percent == 78 && gp[0].to.percent == 78 && gp[1].from.percent == 90 && gp[1].to.percent == 90 && gp[0].id != gp[1].id, "chart: one gap per power-source change, joining the last reading before it to the first after (a plug-in 4 h later is dashed, not blank)")
+check(PowerAnalysis.gaps(in: []).isEmpty && PowerAnalysis.gaps(in: Array(pts[0..<2])).isEmpty, "chart: no gap without a change of source")
+func pp(_ v: Int...) -> [PowerPoint] { v.enumerated().map { PowerPoint(id: $0.offset, date: at(Double($0.offset)), percent: $0.element, onAC: false, run: 0) } }
+check(PowerAnalysis.chartFloor(pp(48, 90)) == 0 && PowerAnalysis.chartFloor(pp(50, 90)) == 50 && PowerAnalysis.chartFloor(pp(74, 100)) == 50 && PowerAnalysis.chartFloor(pp(75, 100)) == 75 && PowerAnalysis.chartFloor(pp(0, 100)) == 0 && PowerAnalysis.chartFloor([]) == 0, "chart: the bottom is 0 unless the battery stayed at 50% or more, then 50 or 75")
 check(PowerAnalysis.points(from: [ev(0, .wake, 80)], now: nil).count == 1 && PowerAnalysis.points(from: [], now: nil).isEmpty, "chart: one point, and none")
 check(PowerAnalysis.points(from: [ev(5, .wake, 80)], now: now(1, 70)).count == 1, "chart: a 'now' before the last reading is not added")
 

@@ -87,6 +87,7 @@ check(item(".hidden") == nil && !items.contains { $0.identifier.unicodeScalars.c
 check(item("com.acme.helper")?.info?.count == 10 && item("com.acme.helper")?.info?.contains("-") == true, "scan: a helper shows the day it was installed")
 check(items.first?.status == .probablyUnused, "scan: the list starts with what is most likely unused")
 check(Set(items.map { $0.id }).count == items.count, "scan: every row has its own id")
+check(DriverScanner.scan(extensionList: header + "\t*\tTEAM1\tcom.acme.dup (1.0/1)\tAcme\t[terminated waiting to uninstall on reboot]\n\t*\tTEAM1\tcom.acme.dup (2.0/1)\tAcme\t[activated enabled]\n", kextDir: "/nonexistent", helperDir: "/nonexistent", installedIDs: [], appExists: { _ in false }).map { $0.id }.sorted() == ["0-com.acme.dup", "0-com.acme.dup#2"], "scan: the same identifier listed twice (an old version waiting to go and the new one) still gives two different ids")
 check(DriverScanner.scan(extensionList: "", kextDir: W.path + "/nope", helperDir: W.path + "/nope2", installedIDs: [], appExists: { _ in false }).isEmpty, "scan: nothing found and missing folders are fine")
 try? fm.removeItem(at: W)
 

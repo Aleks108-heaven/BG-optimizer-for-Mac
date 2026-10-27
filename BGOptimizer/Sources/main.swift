@@ -67,9 +67,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         }
         model.onSettings = { [weak self] s in
             if L10n.resolve(s.language) != L10n.code { self?.applyLanguage(s.language) }
+            self?.activity.adminActions = s.adminActions
             self?.engine.update(s.config, protectedApps: s.protectedApps)
             if s.observeOnly { self?.engine.releaseAll() }       // observing means changing nothing
         }
+        activity.adminActions = model.settings.adminActions
         installSignalHandlers(engine)
 
         item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -157,7 +159,56 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     func menuDidClose(_ menu: NSMenu) { item.menu = nil }
 
     /// Switch a startup item of yours on or off for the next login. The checks are made again inside StartupControlAction.
+    /// Move a driver file to the backup folder. Only with Administrator actions on; macOS asks for the password and every rule is checked again inside.
+    private func removeDriver(_ item: DriverItem) {
+        guard model.settings.adminActions else { return }
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            do {
+                let backup = try AdminActions.removeDriver(item)
+                self?.log.write("DRIVER", "\(item.path ?? item.identifier) moved to \(backup) by you, with your administrator password")
+                DispatchQueue.main.async {
+                    self?.activity.drivers.removeAll { $0.id == item.id }
+                    self?.activity.showNotice(tr("Moved “%@” to %@.", item.name, backup), error: false)
+                    self?.activity.refreshDrivers()
+                }
+            } catch {
+                var key = "Nothing changed: the password was not given, or macOS refused."
+                if let e = error as? AdminError { switch e { case .notAllowed(let k), .failed(let k): key = k } }
+                self?.log.write("REFUSED", "driver \(item.identifier): \(key)")
+                DispatchQueue.main.async {
+                    self?.activity.showNotice(tr("Could not remove “%@”: %@", item.name, tr(key)), error: true)
+                    self?.activity.refreshDrivers()
+                }
+            }
+        }
+    }
+
+    /// A third-party launch daemon on or off for the next start; needs Administrator actions and your password.
+    private func setDaemon(_ item: StartupItem, _ on: Bool) {
+        guard model.settings.adminActions, let path = item.plistPath else { return }
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            do {
+                try AdminActions.setDaemonEnabled(label: item.label, plistPath: path, enable: on)
+                self?.log.write("STARTUP", "\(item.label) daemon \(on ? "switched on" : "switched off") by you, with your administrator password (applies at the next start)")
+                DispatchQueue.main.async {
+                    self?.activity.showNotice(on ? tr("“%@” will start again at the next start.", item.name)
+                                                 : tr("“%@” will not start at the next start. What is running now keeps running.", item.name), error: false)
+                    self?.activity.refreshStartup()
+                }
+            } catch {
+                var key = "Nothing changed: the password was not given, or macOS refused."
+                if let e = error as? AdminError { switch e { case .notAllowed(let k), .failed(let k): key = k } }
+                self?.log.write("REFUSED", "daemon \(item.label): \(key)")
+                DispatchQueue.main.async {
+                    self?.activity.showNotice(tr("Could not change “%@”: %@", item.name, tr(key)), error: true)
+                    self?.activity.refreshStartup()          // puts the switch back to the real state
+                }
+            }
+        }
+    }
+
     private func setStartup(_ item: StartupItem, _ on: Bool) {
+        if item.kind == .systemDaemon { setDaemon(item, on); return }
         guard let path = item.plistPath else { return }
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             do {
@@ -350,6 +401,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
                 revealStorage: { item in
                     let home = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library").path
                     if item.path.hasPrefix(home + "/") { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: item.path)]) }
+                },
+                removeDriver: { [weak self] item in self?.removeDriver(item) },
+                revealDriver: { item in
+                    // only a file this app listed (inside the two driver folders), shown in Finder; nothing is opened or run
+                    guard let path = item.path, [AdminActions.kextDir, AdminActions.helperDir].contains(URL(fileURLWithPath: path).deletingLastPathComponent().path) else { return }
+                    NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
                 })
             w.contentView = NSHostingView(rootView: ActivityView(model: activity, actions: actions))
             w.contentMinSize = NSSize(width: 600, height: 440)
@@ -610,7 +667,7 @@ func snapshotActivityAndWelcome(prefix: String) -> Never {
         }
     }
     let noActions = ActivityActions(slow: { _, _ in }, restore: { _ in }, protect: { _ in }, unprotect: { _ in }, clearLog: {}, showMenu: { _ in }, setStartup: { _, _ in }, openLoginSettings: {},
-                                  trashStorage: { _ in }, revealStorage: { _ in })
+                                  trashStorage: { _ in }, revealStorage: { _ in }, removeDriver: { _ in }, revealDriver: { _ in })
     let status = SystemStatus(cpuLoad: 38, cores: 8, memoryUsedGB: 9.8, memoryTotalGB: 16, pressure: .elevated, thermal: .nominal,
                               lowPowerMode: true,
                               battery: BatteryStatus(percent: 63, charging: false, onAC: false, minutesRemaining: 512, health: "Good",
@@ -670,7 +727,8 @@ func snapshotActivityAndWelcome(prefix: String) -> Never {
     ]
     render(ActivityView(model: ActivityModel(rows: rows, system: status, engineOn: true, tab: .storage, storage: storage), actions: noActions), size: size, appearance: .aqua, to: "\(prefix)-activity-storage.png")
     func drv(_ name: String, _ id: String, _ kind: DriverKind, _ info: String?, _ status: DriverStatus, _ detail: String, _ arg: String? = nil) -> DriverItem {
-        DriverItem(name: name, identifier: id, kind: kind, info: info, status: status, detail: detail, detailArg: arg)
+        DriverItem(name: name, identifier: id, kind: kind, info: info, status: status, detail: detail, detailArg: arg,
+                   path: kind == .systemExtension ? nil : (kind == .kernelExtension ? "/Library/Extensions/" : "/Library/PrivilegedHelperTools/") + id)
     }
     let drivers = [
         drv("Malwarebytes Engine", "com.malwarebytes.mbam.engine.sys.ext", .systemExtension, "5.26.1", .probablyUnused, DriverScanner.detailProbablyUnused, "malwarebytes"),
@@ -682,6 +740,10 @@ func snapshotActivityAndWelcome(prefix: String) -> Never {
         drv("com.adobe.ARMDC.Communicator", "com.adobe.ARMDC.Communicator", .helperTool, "2024-12-04", .installed, DriverScanner.detailInstalled, "adobe"),
     ]
     render(ActivityView(model: ActivityModel(rows: rows, system: status, engineOn: true, tab: .drivers, drivers: drivers), actions: noActions), size: size, appearance: .aqua, to: "\(prefix)-activity-drivers.png")
+    let adminDrivers = ActivityModel(rows: rows, system: status, engineOn: true, tab: .drivers, drivers: drivers)
+    adminDrivers.adminActions = true
+    render(ActivityView(model: adminDrivers, actions: noActions), size: size, appearance: .aqua, to: "\(prefix)-activity-drivers-admin.png")
+    render(ActivityView(model: adminDrivers, actions: noActions), size: size, appearance: .darkAqua, to: "\(prefix)-activity-drivers-admin-dark.png")
     render(ActivityView(model: ActivityModel(rows: rows, system: status, engineOn: true, tab: .drivers, drivers: drivers), actions: noActions), size: size, appearance: .darkAqua, to: "\(prefix)-activity-drivers-dark.png")
     let expanded = ActivityModel(rows: rows, system: status, engineOn: true, tab: .drivers, drivers: drivers)
     expanded.openBanners = [.drivers]                // the explanation opened with "More"

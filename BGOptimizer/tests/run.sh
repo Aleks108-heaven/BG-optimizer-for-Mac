@@ -65,6 +65,7 @@ startup_test() { build startup tests/startup_test.swift "${CORE[@]}" Sources/Sta
 storage_test() { build storage tests/storage_test.swift "${CORE[@]}" Sources/Storage.swift && "$W/storage.app/Contents/MacOS/t"; }
 policy_test() { build policy tests/policy_test.swift "${CORE[@]}" && "$W/policy.app/Contents/MacOS/t"; }
 driver_test() { build driver tests/driver_test.swift "${CORE[@]}" Sources/Storage.swift Sources/ToolRunner.swift Sources/DriverItems.swift && "$W/driver.app/Contents/MacOS/t"; }
+admin_test() { build admin tests/admin_test.swift "${CORE[@]}" Sources/Storage.swift Sources/ToolRunner.swift Sources/DriverItems.swift Sources/StartupItems.swift Sources/AdminActions.swift && "$W/admin.app/Contents/MacOS/t"; }
 power_test() { build power tests/power_history_test.swift "${CORE[@]}" Sources/ToolRunner.swift Sources/PowerHistory.swift && "$W/power.app/Contents/MacOS/t"; }
 thermal_test() { build thermal tests/thermal_test.swift "${CORE[@]}" Sources/Thermal.swift && "$W/thermal.app/Contents/MacOS/t"; }
 manual_test() {
@@ -88,6 +89,7 @@ section "startup items: parsing, rules for changing, real read" 300 startup_test
 section "storage: what is offered, what is never offered, the rules for Move to Trash" 300 storage_test
 section "policy: a security tool's name must start a word (no false 'Security tool')" 300 policy_test
 section "drivers: reading, the decision for every kind of row, a real read" 300 driver_test
+section "administrator actions: what may be removed or switched, how a name reaches a command (never asks for a password)" 300 admin_test
 section "battery history: the power log's lines, sessions, drain, hostile input, a real read checked a second way" 300 power_test
 section "fans and temperatures: decoding, grouping, nonsense refused, a real read (read only)" 300 thermal_test
 section "changing jobs by hand: rules enforced by the engine" 360 manual_test
