@@ -26,7 +26,11 @@ engine.onActivity = { r, _ in rows = Dictionary(uniqueKeysWithValues: r.map { ($
 engine.onNotice = { t, err in notices.append((t, err)) }
 engine.start(); engine.setActivity(true)
 
-func at(_ t: Double, _ f: @escaping () -> Void) { DispatchQueue.main.asyncAfter(deadline: .now() + t, execute: f) }
+// Steps run strictly one after another, each no earlier than its time (seconds after the start). They used to be separate timers, but the
+// waits below spin the run loop, so on a slow runner a later step's timer fired in the middle of an earlier step (before its banner mark
+// was set) and took a stale banner for its own.
+var steps: [(Double, () -> Void)] = []
+func at(_ t: Double, _ f: @escaping () -> Void) { steps.append((t, f)) }
 func lastNotice() -> (String, Bool)? { notices.last }
 // The engine answers on its own queue and the banner arrives on the main queue, so a slow machine can take longer than any fixed
 // delay. These wait for what is expected (up to 3 s) instead of guessing, and a banner must be NEW (not left over from an earlier step).
@@ -72,4 +76,9 @@ at(17.2){ check(newNotice()?.1 == true, "refusal banner"); check(pri(sleeper) ==
 at(17.5){ engine.shutdownSync()
           check(pri(sleeper) == normalSleeper && pri(chrome) == normalChrome, "everything is back to normal after quitting")
           print(failures == 0 ? "MANUAL CONTROL: ALL PASSED" : "MANUAL CONTROL: \(failures) FAILED"); exit(failures == 0 ? 0 : 1) }
-RunLoop.main.run()
+let t0 = Date()
+for (t, f) in steps {
+    let due = t0.addingTimeInterval(t)
+    while Date() < due { RunLoop.main.run(until: min(due, Date().addingTimeInterval(0.05))) }
+    f()
+}
